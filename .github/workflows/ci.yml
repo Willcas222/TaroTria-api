@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NODE_ENV: test
+  DATABASE_URL: postgresql://oracle:oracle@localhost:5432/oracle_api?schema=public
+  DATABASE_URL_TEST: postgresql://oracle:oracle@localhost:5432/oracle_api_test?schema=public
+  REDIS_URL: redis://localhost:6379/0
+  REDIS_URL_TEST: redis://localhost:6379/1
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: oracle
+          POSTGRES_PASSWORD: oracle
+          POSTGRES_DB: oracle_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oracle -d oracle_api"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies (reproducible)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Create isolated test database
+        run: |
+          PGPASSWORD=oracle psql -h localhost -U oracle -d postgres \
+            -c "CREATE DATABASE oracle_api_test;"
+
+      - name: Apply migrations to the dev database
+        run: npm run db:migrate:deploy
+
+      - name: Unit tests
+        run: npm test
+
+      - name: E2E tests
+        run: npm run test:e2e
+
+      - name: Integration tests (isolated database and Redis logical DB)
+        run: npm run test:integration
+
+      - name: Build
+        run: npm run build
+
+      - name: Dependency vulnerability scan (informational)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true

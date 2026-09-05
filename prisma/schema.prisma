@@ -1,0 +1,626 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  DELETED
+}
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  name            String
+  passwordHash    String
+  status          UserStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  userRoles          UserRole[]
+  refreshTokens      RefreshToken[]
+  verificationTokens VerificationToken[]
+  readings           Reading[]
+  promptVersions     PromptVersion[]
+  wallet             Wallet?
+  orders             Order[]
+  analyticsEvents    AnalyticsEvent[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model Role {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?   @unique
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+enum VerificationTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model VerificationToken {
+  id        String                   @id @default(uuid())
+  userId    String
+  purpose   VerificationTokenPurpose
+  tokenHash String                   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime                 @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("verification_tokens")
+}
+
+model Service {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  creditCost  Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  forms    ServiceForm[]
+  readings Reading[]
+
+  @@map("services")
+}
+
+model ServiceForm {
+  id        String   @id @default(uuid())
+  serviceId String
+  version   Int
+  schema    Json
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, version])
+  @@index([serviceId, isActive])
+  @@map("service_forms")
+}
+
+enum ArcanaType {
+  MAJOR
+  MINOR
+}
+
+enum MinorSuit {
+  WANDS
+  CUPS
+  SWORDS
+  PENTACLES
+}
+
+model TarotDeck {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  cards TarotCard[]
+
+  @@map("tarot_decks")
+}
+
+model TarotCard {
+  id              String     @id @default(uuid())
+  deckId          String
+  code            String
+  name            String
+  arcana          ArcanaType
+  suit            MinorSuit?
+  numberInSuit    Int?
+  orderIndex      Int
+  uprightMeaning  String
+  reversedMeaning String
+  imageUrl        String?
+  createdAt       DateTime   @default(now())
+
+  deck  TarotDeck   @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  draws TarotDraw[]
+
+  @@unique([deckId, code])
+  @@index([deckId, orderIndex])
+  @@map("tarot_cards")
+}
+
+model TarotSpread {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  positions TarotSpreadPosition[]
+  readings  Reading[]
+
+  @@map("tarot_spreads")
+}
+
+model TarotSpreadPosition {
+  id         String   @id @default(uuid())
+  spreadId   String
+  code       String
+  label      String
+  orderIndex Int
+  createdAt  DateTime @default(now())
+
+  spread TarotSpread @relation(fields: [spreadId], references: [id], onDelete: Cascade)
+
+  @@unique([spreadId, code])
+  @@index([spreadId, orderIndex])
+  @@map("tarot_spread_positions")
+}
+
+enum ReadingStatus {
+  DRAFT
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum CardOrientation {
+  UPRIGHT
+  REVERSED
+}
+
+model Reading {
+  id              String        @id @default(uuid())
+  userId          String
+  serviceId       String
+  spreadId        String?
+  promptVersionId String?
+  status          ReadingStatus @default(DRAFT)
+  submittedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service       Service        @relation(fields: [serviceId], references: [id])
+  spread        TarotSpread?   @relation(fields: [spreadId], references: [id])
+  promptVersion PromptVersion? @relation(fields: [promptVersionId], references: [id])
+
+  input              ReadingInput?
+  draws              TarotDraw[]
+  aiExecutions       AIExecution[]
+  palmImages         PalmImage[]
+  walletTransactions WalletTransaction[]
+  creditReservation  CreditReservation?
+  shareLinks         ShareLink[]
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@map("readings")
+}
+
+enum PalmImageStatus {
+  UPLOADED
+  PENDING_REVIEW
+  VALID
+  INVALID
+}
+
+model PalmImage {
+  id              String          @id @default(uuid())
+  readingId       String
+  storageKey      String          @unique
+  status          PalmImageStatus @default(UPLOADED)
+  mimeType        String?
+  sizeBytes       Int?
+  widthPx         Int?
+  heightPx        Int?
+  validationError String?
+  consentAt       DateTime?
+  expiresAt       DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime        @default(now())
+
+  reading Reading @relation(fields: [readingId], references: [id], onDelete: Cascade)
+
+  @@index([readingId])
+  @@index([expiresAt, deletedAt])
+  @@map("palm_images")
+}
+
+model ReadingInput {
+  id          String   @id @default(uuid())
+  readingId   String   @unique
+  formVersion Int
+  answers     Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reading Reading @relation(fields: [readingId], references: [id], onDelete: Cascade)
+
+  @@map("reading_inputs")
+}
+
+model TarotDraw {
+  id          String          @id @default(uuid())
+  readingId   String
+  position    String
+  cardId      String
+  orientation CardOrientation
+  createdAt   DateTime        @default(now())
+
+  reading Reading   @relation(fields: [readingId], references: [id], onDelete: Cascade)
+  card    TarotCard @relation(fields: [cardId], references: [id])
+
+  @@unique([readingId, position])
+  @@index([readingId])
+  @@map("tarot_draws")
+}
+
+enum PromptVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AIExecutionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Prompt {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  versions PromptVersion[]
+
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id                 String              @id @default(uuid())
+  promptId           String
+  version            Int
+  systemPrompt       String
+  userPromptTemplate String
+  model              String
+  temperature        Float?
+  maxOutputTokens    Int?
+  outputSchema       Json
+  status             PromptVersionStatus @default(DRAFT)
+  authorId           String?
+  publishedAt        DateTime?
+  createdAt          DateTime            @default(now())
+
+  prompt     Prompt        @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  author     User?         @relation(fields: [authorId], references: [id])
+  executions AIExecution[]
+  readings   Reading[]
+
+  @@unique([promptId, version])
+  @@index([promptId, status])
+  @@map("prompt_versions")
+}
+
+model AIExecution {
+  id              String            @id @default(uuid())
+  promptVersionId String
+  readingId       String?
+  provider        String
+  model           String
+  status          AIExecutionStatus @default(PENDING)
+  inputSummary    Json
+  outputJson      Json?
+  tokensInput     Int?
+  tokensOutput    Int?
+  latencyMs       Int?
+  costEstimateUsd Decimal?          @db.Decimal(10, 6)
+  errorMessage    String?
+  createdAt       DateTime          @default(now())
+
+  promptVersion PromptVersion @relation(fields: [promptVersionId], references: [id])
+  reading       Reading?      @relation(fields: [readingId], references: [id])
+
+  @@index([promptVersionId, createdAt])
+  @@index([readingId])
+  @@map("ai_executions")
+}
+
+enum WalletTransactionType {
+  PURCHASE
+  RESERVATION
+  CONSUMPTION
+  RELEASE
+  REFUND
+  BONUS
+  PROMOTION
+  REFERRAL
+  ADJUSTMENT
+}
+
+enum CreditReservationStatus {
+  ACTIVE
+  CONSUMED
+  RELEASED
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  balance   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+  reservations CreditReservation[]
+
+  @@map("wallets")
+}
+
+// El ledger es la fuente auditable (sección 8 del plan); wallet.balance es
+// una proyección que se actualiza dentro de la misma transacción que cada
+// movimiento, y debe poder reconciliarse sumando `amount` de este historial.
+model WalletTransaction {
+  id             String                @id @default(uuid())
+  walletId       String
+  type           WalletTransactionType
+  amount         Int
+  balanceAfter   Int
+  idempotencyKey String                @unique
+  readingId      String?
+  orderId        String?
+  createdAt      DateTime              @default(now())
+
+  wallet  Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  reading Reading? @relation(fields: [readingId], references: [id])
+  order   Order?   @relation(fields: [orderId], references: [id])
+
+  @@index([walletId, createdAt])
+  @@map("wallet_transactions")
+}
+
+// Una reserva por lectura (readingId único): garantiza a nivel de base de
+// datos que un envío duplicado (doble clic, reintento concurrente) nunca
+// puede reservar créditos dos veces para la misma lectura.
+model CreditReservation {
+  id        String                  @id @default(uuid())
+  walletId  String
+  readingId String                  @unique
+  amount    Int
+  status    CreditReservationStatus @default(ACTIVE)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  wallet  Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  reading Reading @relation(fields: [readingId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, status])
+  @@map("credit_reservations")
+}
+
+model CreditPackage {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  credits     Int
+  // Enteros en centavos de COP (sección 8 del plan: nunca usar Decimal para
+  // dinero real, solo para costos estimados de IA que requieren fracción).
+  priceCents  Int
+  currency    String   @default("COP")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders Order[]
+
+  @@map("credit_packages")
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+// El precio y los créditos se congelan aquí al crear la orden (copiados de
+// CreditPackage en ese momento): si el precio del paquete cambia después,
+// las órdenes ya creadas no se ven afectadas.
+model Order {
+  id              String      @id @default(uuid())
+  userId          String
+  creditPackageId String
+  credits         Int
+  priceCents      Int
+  currency        String      @default("COP")
+  status          OrderStatus @default(PENDING)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditPackage CreditPackage @relation(fields: [creditPackageId], references: [id])
+
+  payments           Payment[]
+  walletTransactions WalletTransaction[]
+
+  @@index([userId, status])
+  @@map("orders")
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  FAILED
+  REFUNDED
+}
+
+// providerReference es la referencia que NOSOTROS generamos y controlamos
+// (única por intento de pago, no por orden — un usuario puede reintentar
+// varias veces la misma orden); providerTransactionId es el id que Wompi
+// asigna una vez existe la transacción, para trazabilidad adicional.
+model Payment {
+  id                    String        @id @default(uuid())
+  orderId               String
+  provider              String
+  providerReference     String
+  providerTransactionId String?
+  status                PaymentStatus @default(PENDING)
+  amountCents           Int
+  currency              String        @default("COP")
+  // Payload saneado del proveedor (nunca datos completos de tarjeta —
+  // sección 15 del plan: Wompi nunca nos entrega esos datos, su checkout
+  // hospedado los captura directamente).
+  rawPayload            Json?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerReference])
+  @@index([orderId])
+  @@map("payments")
+}
+
+// Registro de cada evento de webhook recibido, para idempotencia a nivel de
+// entrega (además de la idempotencia a nivel de negocio que ya garantizan
+// Payment.status y WalletTransaction.idempotencyKey — tres capas, mismo
+// principio de "cinturón y tirantes" ya usado en la Fase 7).
+model WebhookEvent {
+  id          String    @id @default(uuid())
+  provider    String
+  eventId     String
+  eventType   String
+  payload     Json
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([provider, eventId])
+  @@map("webhook_events")
+}
+
+enum ShareImageStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+// Token público revocable (sección 8 y Fase 9 del plan). Decisión real,
+// documentada: el propio `id` (UUID v4, 122 bits al azar) hace de token
+// público en la URL (`/r/[id]`) en vez de un secreto aparte hasheado —
+// exactamente el mismo nivel de exposición que ya tienen `Reading.id`,
+// `Order.id` o `Payment.id` en el resto de la API. La sección 8 del plan
+// sugiere un `token_hash` aparte, pero eso choca con un requisito de
+// producto real: el usuario debe poder ver/copiar su enlace de nuevo sin que
+// cambie (un hash de un secreto, como los refresh tokens, solo puede
+// mostrarse una vez). El contenido detrás del enlace ya es público y saneado
+// por diseño — el hash no protegía nada que no proteja ya la revocación —
+// así que se prioriza la usabilidad sin perder revocabilidad real.
+model ShareLink {
+  id          String           @id @default(uuid())
+  readingId   String
+  imageKey    String?
+  imageStatus ShareImageStatus @default(PENDING)
+  revokedAt   DateTime?
+  createdAt   DateTime         @default(now())
+
+  reading Reading          @relation(fields: [readingId], references: [id], onDelete: Cascade)
+  events  AnalyticsEvent[]
+
+  @@index([readingId])
+  @@map("share_links")
+}
+
+// `type` es String (no un enum de Prisma) a propósito: esta tabla debe poder
+// registrar tipos de evento futuros fuera del alcance de compartir (Fase 10:
+// dashboard) sin requerir una migración cada vez — el conjunto cerrado de
+// eventos de esta fase vive como constantes TypeScript en
+// src/sharing/sharing.constants.ts.
+model AnalyticsEvent {
+  id          String    @id @default(uuid())
+  type        String
+  shareLinkId String?
+  userId      String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  shareLink ShareLink? @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([type, createdAt])
+  @@index([shareLinkId])
+  @@map("analytics_events")
+}
+
+// Sección 17 del plan: "auditoría de accesos administrativos y ajustes de
+// saldo". targetType/targetId identifican el registro afectado de forma
+// genérica (sin FK, porque una misma auditoría cubre Service, Prompt, User,
+// etc.) para no acoplar este modelo a cada entidad administrable.
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  action      String
+  targetType  String?
+  targetId    String?
+  reason      String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  // SetNull (no Restrict/Cascade): el registro de auditoría es el historial
+  // que debe sobrevivir aunque la cuenta del actor se purgue más adelante —
+  // mismo patrón que AnalyticsEvent.user.
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}

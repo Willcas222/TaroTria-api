@@ -1,0 +1,2 @@
+export const AI_REQUEST_TIMEOUT_MS = 30_000;
+export const AI_MAX_TECHNICAL_RETRIES = 2;
