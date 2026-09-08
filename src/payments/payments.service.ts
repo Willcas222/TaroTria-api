@@ -91,6 +91,65 @@ export class PaymentsService {
     return intent;
   }
 
+  // Red de seguridad para cuando el webhook de Wompi no llega (frecuente en
+  // local, donde la URL pública depende de un túnel efímero; también puede
+  // pasar en producción por una entrega perdida). Wompi siempre agrega el id
+  // de la transacción como query param al volver al redirect-url
+  // (`?id=...`), así que el propio navegador del usuario puede pedirle a
+  // nuestra API que verifique el estado real contra Wompi en vez de esperar
+  // pasivamente. Reutiliza approvePayment/markPaymentTerminal, que ya son
+  // idempotentes (updateMany where status=PENDING), así que no hay riesgo de
+  // acreditar dos veces si el webhook también llega.
+  async confirmFromReturn(
+    userId: string,
+    orderId: string,
+    providerTransactionId: string,
+  ): Promise<void> {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, userId },
+    });
+    if (!order) {
+      throw new NotFoundException('Orden no encontrada.');
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: { orderId: order.id, provider: this.provider.name, status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!payment) {
+      return; // Ya se resolvió por otra vía (webhook u otra confirmación).
+    }
+
+    const transaction = await this.provider.fetchTransaction(providerTransactionId);
+    if (!transaction || transaction.reference !== payment.providerReference) {
+      this.logger.warn(
+        `No se pudo reconciliar el pago ${payment.id} con la transacción ${providerTransactionId} de Wompi.`,
+      );
+      return;
+    }
+
+    if (
+      payment.amountCents !== transaction.amountInCents ||
+      payment.currency !== transaction.currency
+    ) {
+      this.logger.error(
+        `Amount/currency mismatch reconciling payment ${payment.id}: expected ${payment.amountCents} ${payment.currency}, got ${transaction.amountInCents} ${transaction.currency}. Refusing to process.`,
+      );
+      return;
+    }
+
+    const mappedStatus = TERMINAL_STATUS_MAP[transaction.status];
+    if (mappedStatus === null) {
+      return; // Sigue PENDING en Wompi; nada que hacer todavía.
+    }
+
+    if (mappedStatus === 'APPROVED') {
+      await this.approvePayment(payment, transaction, mappedStatus);
+    } else {
+      await this.markPaymentTerminal(payment, transaction, mappedStatus);
+    }
+  }
+
   // Paso 6-8 de la sección 15 del plan: valida firma, referencia, moneda,
   // monto y estado, y en una transacción marca pago/orden y acredita
   // créditos una sola vez, incluso si Wompi reintenta la entrega.

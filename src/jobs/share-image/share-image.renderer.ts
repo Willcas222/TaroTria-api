@@ -82,7 +82,7 @@ export function buildShareImageSvg(
   <rect width="${width}" height="${height}" fill="url(#bg)"/>
   <rect x="40" y="40" width="${width - 80}" height="${height - 80}" rx="24" fill="none" stroke="#c9a84c" stroke-width="3" opacity="0.5"/>
 
-  <text x="${width / 2}" y="220" text-anchor="middle" font-family="Georgia, serif" font-size="56" letter-spacing="6" fill="#c9a84c">ORÁCULO IA</text>
+  <text x="${width / 2}" y="220" text-anchor="middle" font-family="Georgia, serif" font-size="56" letter-spacing="6" fill="#c9a84c">ORÁCULO TAROTRIA</text>
 
   <text x="${width / 2}" y="420" text-anchor="middle" font-family="Georgia, serif" font-size="44" font-weight="bold" fill="#ffffff">${escapeXml(data.title)}</text>
 

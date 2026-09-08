@@ -30,6 +30,7 @@ describe('PaymentsService', () => {
     payment: {
       create: jest.Mock;
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       updateMany: jest.Mock;
     };
     webhookEvent: { create: jest.Mock };
@@ -83,6 +84,7 @@ describe('PaymentsService', () => {
       payment: {
         create: jest.fn(),
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         updateMany: jest.fn(),
       },
       webhookEvent: { create: jest.fn() },
@@ -285,6 +287,85 @@ describe('PaymentsService', () => {
         where: { id: 'order-1', status: 'PENDING' },
         data: { status: 'CANCELLED' },
       });
+      expect(walletService.creditPurchase).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('confirmFromReturn', () => {
+    it('throws NotFoundException when the order does not belong to the user', async () => {
+      prisma.order.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.confirmFromReturn('user-1', 'order-1', 'tx-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(provider.fetchTransaction).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when there is no PENDING payment left to reconcile', async () => {
+      prisma.order.findFirst.mockResolvedValue(baseOrder);
+      prisma.payment.findFirst.mockResolvedValue(null);
+
+      await service.confirmFromReturn('user-1', 'order-1', 'tx-1');
+
+      expect(provider.fetchTransaction).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when Wompi has no matching transaction, or its reference does not match', async () => {
+      prisma.order.findFirst.mockResolvedValue(baseOrder);
+      prisma.payment.findFirst.mockResolvedValue(basePayment);
+      provider.fetchTransaction.mockResolvedValue({
+        ...baseTransaction,
+        reference: 'some-other-reference',
+      });
+
+      await service.confirmFromReturn('user-1', 'order-1', 'tx-1');
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('refuses to process when amount or currency does not match the stored payment', async () => {
+      prisma.order.findFirst.mockResolvedValue(baseOrder);
+      prisma.payment.findFirst.mockResolvedValue(basePayment);
+      provider.fetchTransaction.mockResolvedValue({
+        ...baseTransaction,
+        amountInCents: 1,
+      });
+
+      await service.confirmFromReturn('user-1', 'order-1', 'tx-1');
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('approves the payment and credits the wallet exactly once, same as the webhook path', async () => {
+      prisma.order.findFirst.mockResolvedValue(baseOrder);
+      prisma.payment.findFirst.mockResolvedValue(basePayment);
+      provider.fetchTransaction.mockResolvedValue(baseTransaction);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.order.findUniqueOrThrow.mockResolvedValue(baseOrder);
+
+      await service.confirmFromReturn('user-1', 'order-1', 'tx-1');
+
+      expect(provider.fetchTransaction).toHaveBeenCalledWith('tx-1');
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'payment-1', status: 'PENDING' },
+        data: { status: 'APPROVED', providerTransactionId: 'tx-1' },
+      });
+      expect(walletService.creditPurchase).toHaveBeenCalledWith(
+        prisma,
+        'user-1',
+        'order-1',
+        50,
+      );
+    });
+
+    it('is idempotent if the webhook already approved the payment in the meantime', async () => {
+      prisma.order.findFirst.mockResolvedValue(baseOrder);
+      prisma.payment.findFirst.mockResolvedValue(basePayment);
+      provider.fetchTransaction.mockResolvedValue(baseTransaction);
+      prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.confirmFromReturn('user-1', 'order-1', 'tx-1');
+
       expect(walletService.creditPurchase).not.toHaveBeenCalled();
     });
   });

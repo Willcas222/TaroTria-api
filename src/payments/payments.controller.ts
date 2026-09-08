@@ -1,7 +1,17 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateWompiPaymentDto } from './dto/create-wompi-payment.dto';
+import {
+  ConfirmWompiPaymentDto,
+  CreateWompiPaymentDto,
+} from './dto/create-wompi-payment.dto';
 import { PaymentsService } from './payments.service';
 
 @UseGuards(JwtAuthGuard)
@@ -20,5 +30,19 @@ export class PaymentsController {
         dto.orderId,
       ),
     };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('wompi/confirm')
+  async confirmWompiCheckout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ConfirmWompiPaymentDto,
+  ) {
+    await this.paymentsService.confirmFromReturn(
+      user.id,
+      dto.orderId,
+      dto.transactionId,
+    );
+    return { success: true };
   }
 }

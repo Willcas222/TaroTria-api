@@ -29,7 +29,7 @@ describe('buildShareImageSvg', () => {
 
     expect(svg).toContain('width="1080"');
     expect(svg).toContain('height="1920"');
-    expect(svg).toContain('ORÁCULO IA');
+    expect(svg).toContain('ORÁCULO TAROTRIA');
     expect(svg).toContain('Hice una lectura de tarot en TAROTRIA');
     expect(svg).toContain('El Sol');
     expect(svg).toContain('Derecha');
