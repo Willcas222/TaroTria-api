@@ -1,0 +1,12 @@
+# Fin de línea único (LF) para todo el proyecto, sin importar el sistema
+# operativo de quien lo abra. Windows con core.autocrlf=true convierte a
+# CRLF en el checkout, lo que hacía que git marcara archivos como
+# "modified" sin ningún cambio real de contenido, solo por el salto de
+# línea. `text=auto` deja que git detecte binarios automáticamente.
+* text=auto eol=lf
+
+# Los binarios explícitos nunca deben pasar por conversión de fin de línea.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
