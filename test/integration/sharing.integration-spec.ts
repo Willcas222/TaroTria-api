@@ -41,13 +41,6 @@ const TAROT_THREE_FORM_SCHEMA = {
       minLength: 5,
       maxLength: 500,
     },
-    {
-      key: 'topic',
-      type: 'select',
-      label: 'Tema',
-      required: true,
-      options: ['LOVE', 'WORK', 'MONEY', 'PERSONAL'],
-    },
   ],
 };
 
@@ -149,7 +142,7 @@ async function registerAndCompleteForm(
   await request(app.getHttpServer())
     .patch(`/api/v1/readings/${readingId}/inputs`)
     .set('Cookie', cookie)
-    .send({ answers: { question: PRIVATE_QUESTION, topic: 'LOVE' } })
+    .send({ answers: { question: PRIVATE_QUESTION } })
     .expect(200);
 
   return { cookie, readingId };

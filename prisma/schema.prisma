@@ -32,6 +32,9 @@ model User {
   orders             Order[]
   analyticsEvents    AnalyticsEvent[]
   auditLogs          AuditLog[]
+  rewardSessions     RewardSession[]
+  rewardTransactions RewardTransaction[]
+  rewardProgress     RewardProgress[]
 
   @@map("users")
 }
@@ -457,6 +460,11 @@ model CreditPackage {
   priceCents  Int
   currency    String   @default("COP")
   isActive    Boolean  @default(true)
+  // Resalta este paquete como "RECOMENDADO" en la pantalla de compra (efecto
+  // señuelo de la sección 7 del modelo de negocio: el paquete intermedio debe
+  // percibirse como la mejor relación precio/beneficio). Como máximo un
+  // paquete activo debería tener esto en true a la vez.
+  isRecommended Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -623,4 +631,79 @@ model AuditLog {
   @@index([actorUserId, createdAt])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+// Sistema de publicidad recompensada (Rewarded Ads). El backend es la única
+// autoridad: una recompensa solo existe si un RewardTransaction fue creado a
+// partir de un RewardSession validado contra el proveedor real (nunca porque
+// el frontend diga "completed: true"). Ver RewardsService.
+enum RewardType {
+  DAILY_CARD_UNLOCK
+  TAROT_READING_UNLOCK
+  FLASH_OFFER_UNLOCK
+}
+
+enum RewardSessionStatus {
+  CREATED
+  STARTED
+  COMPLETED
+  EXPIRED
+  FAILED
+  REJECTED
+}
+
+model RewardSession {
+  id             String              @id @default(uuid())
+  userId         String
+  rewardType     RewardType
+  provider       String
+  status         RewardSessionStatus @default(CREATED)
+  // Única por (userId, rewardType, createdAt-bucket) la genera el servicio;
+  // es la barrera real contra reintentos/doble-submit del mismo intento de
+  // anuncio, además del estado de la sesión.
+  idempotencyKey String              @unique
+  createdAt      DateTime            @default(now())
+  completedAt    DateTime?
+  expiresAt      DateTime
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction RewardTransaction?
+
+  @@index([userId, rewardType, status])
+  @@map("reward_sessions")
+}
+
+// 1:1 con RewardSession (rewardSessionId único): una sesión que ya produjo su
+// transacción no puede volver a producir otra — esa es la protección real
+// contra doble recompensa, a nivel de base de datos, no solo de lógica.
+model RewardTransaction {
+  id              String     @id @default(uuid())
+  userId          String
+  rewardSessionId String     @unique
+  rewardType      RewardType
+  rewardAmount    Int
+  provider        String
+  createdAt       DateTime   @default(now())
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewardSession RewardSession @relation(fields: [rewardSessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, rewardType])
+  @@map("reward_transactions")
+}
+
+// Contador de progreso hacia el próximo desbloqueo (ej. "3 de 5 anuncios").
+// Se resetea a 0 cuando el progreso llega al umbral configurado y se
+// consume el desbloqueo (ver RewardsService.registerCompletedSession).
+model RewardProgress {
+  id           String     @id @default(uuid())
+  userId       String
+  rewardType   RewardType
+  currentCount Int        @default(0)
+  updatedAt    DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, rewardType])
+  @@map("reward_progress")
 }

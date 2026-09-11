@@ -11,6 +11,8 @@ import { TAROT_SPREADS } from './seed-data/tarot-spreads';
 import {
   PALM_IMAGE_LEGIBILITY_PROMPT,
   PALM_READING_INTERPRETATION_PROMPT,
+  TAROT_FIVE_INTERPRETATION_PROMPT,
+  TAROT_TEN_INTERPRETATION_PROMPT,
   TAROT_THREE_INTERPRETATION_PROMPT,
   type PromptSeed,
 } from './seed-data/prompts';
@@ -46,7 +48,7 @@ async function seedServices() {
       create: service,
     });
 
-    if (service.code === 'TAROT_THREE') {
+    if (['TAROT_THREE', 'TAROT_FIVE', 'TAROT_TEN'].includes(service.code)) {
       const existingForm = await prisma.serviceForm.findFirst({
         where: { serviceId: upserted.id },
       });
@@ -157,6 +159,8 @@ async function seedPrompt(promptSeed: PromptSeed) {
 
 async function seedPrompts() {
   await seedPrompt(TAROT_THREE_INTERPRETATION_PROMPT);
+  await seedPrompt(TAROT_FIVE_INTERPRETATION_PROMPT);
+  await seedPrompt(TAROT_TEN_INTERPRETATION_PROMPT);
   await seedPrompt(PALM_IMAGE_LEGIBILITY_PROMPT);
   await seedPrompt(PALM_READING_INTERPRETATION_PROMPT);
 }
@@ -171,6 +175,7 @@ async function seedCreditPackages() {
         credits: pkg.credits,
         priceCents: pkg.priceCents,
         currency: pkg.currency,
+        isRecommended: pkg.isRecommended,
         isActive: true,
       },
       create: pkg,

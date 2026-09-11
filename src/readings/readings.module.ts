@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { QueuesModule } from '../queues/queues.module';
+import { RewardsModule } from '../rewards/rewards.module';
 import { SharingModule } from '../sharing/sharing.module';
 import { TarotModule } from '../tarot/tarot.module';
 import { UsersModule } from '../users/users.module';
@@ -16,6 +17,7 @@ import { ReadingsService } from './readings.service';
     QueuesModule,
     WalletModule,
     SharingModule,
+    RewardsModule,
   ],
   controllers: [ReadingsController],
   providers: [ReadingsService],

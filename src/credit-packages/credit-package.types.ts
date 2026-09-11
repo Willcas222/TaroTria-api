@@ -7,6 +7,7 @@ export interface CreditPackageSummary {
   credits: number;
   priceCents: number;
   currency: string;
+  isRecommended: boolean;
 }
 
 export function toCreditPackageSummary(
@@ -19,5 +20,6 @@ export function toCreditPackageSummary(
     credits: pkg.credits,
     priceCents: pkg.priceCents,
     currency: pkg.currency,
+    isRecommended: pkg.isRecommended,
   };
 }

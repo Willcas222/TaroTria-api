@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiOrchestratorService } from '../../ai/ai-orchestrator.service';
 import { PromptsService } from '../../ai/prompts.service';
-import { TAROT_INTERPRETATION_TASK } from '../../ai/tasks/tarot-interpretation.schema';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WalletService } from '../../wallet/wallet.service';
 import type { ReadingProcessor } from './reading-processor.interface';
@@ -33,6 +32,7 @@ export class TarotReadingProcessor implements ReadingProcessor {
       where: { id: readingId },
       include: {
         input: true,
+        service: true,
         spread: { include: { positions: true } },
         draws: { include: { card: true } },
       },
@@ -53,14 +53,17 @@ export class TarotReadingProcessor implements ReadingProcessor {
       data: { status: 'PROCESSING' },
     });
 
+    // Convención por code (igual que el mapeo Service -> TarotSpread): cada
+    // tirada de tarot (TAROT_THREE, TAROT_FIVE, TAROT_TEN...) tiene su propio
+    // prompt publicado bajo "<code del servicio>_INTERPRETATION", así que
+    // agregar una profundidad nueva no requiere tocar este processor.
     const promptVersionId = await this.promptsService.getPublishedVersionId(
-      TAROT_INTERPRETATION_TASK,
+      `${reading.service.code}_INTERPRETATION`,
     );
 
     const answers = (reading.input?.answers ?? {}) as Record<string, unknown>;
     const question =
       typeof answers.question === 'string' ? answers.question : '';
-    const topic = typeof answers.topic === 'string' ? answers.topic : '';
 
     const positionOrder = new Map(
       reading.spread?.positions.map((p) => [p.code, p.orderIndex]) ?? [],
@@ -82,7 +85,7 @@ export class TarotReadingProcessor implements ReadingProcessor {
     const result = await this.aiOrchestrator.execute({
       promptVersionId,
       readingId,
-      variables: { question, topic, cards: cardsText },
+      variables: { question, cards: cardsText },
       riskCheckText: question,
     });
 

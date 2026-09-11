@@ -7,6 +7,7 @@ const API_URL = 'http://localhost:3000/api/v1';
 const JWT_ACCESS_SECRET = 'test-only-access-secret-please-change-32chars';
 const JWT_REFRESH_SECRET = 'test-only-refresh-secret-please-change-32chr';
 const DAILY_CARD_SECRET = 'test-only-daily-card-secret-please-change-32c';
+const REWARDS_STUB_SECRET = 'test-only-rewards-stub-secret';
 const OPENAI_API_KEY = 'sk-test-dummy-key-never-called-in-tests';
 const SPACES_ENDPOINT = 'http://localhost:9000';
 const SPACES_BUCKET = 'oracle-palm-images-test';
@@ -24,6 +25,7 @@ const REQUIRED = {
   JWT_ACCESS_SECRET,
   JWT_REFRESH_SECRET,
   DAILY_CARD_SECRET,
+  REWARDS_STUB_SECRET,
   OPENAI_API_KEY,
   SPACES_ENDPOINT,
   SPACES_BUCKET,
@@ -54,6 +56,25 @@ describe('validateEnv', () => {
     expect(result.WOMPI_API_URL).toBe('https://sandbox.wompi.co/v1');
     expect(result.AI_COST_USD_TO_COP_RATE).toBe(4000);
     expect(result.SENTRY_DSN).toBeUndefined();
+    expect(result.RESEND_API_KEY).toBeUndefined();
+    expect(result.EMAIL_FROM).toBe('TAROTRIA <onboarding@resend.dev>');
+  });
+
+  it('treats an empty RESEND_API_KEY as not configured', () => {
+    const result = validateEnv({ ...REQUIRED, RESEND_API_KEY: '' });
+
+    expect(result.RESEND_API_KEY).toBeUndefined();
+  });
+
+  it('accepts a real RESEND_API_KEY and a custom EMAIL_FROM', () => {
+    const result = validateEnv({
+      ...REQUIRED,
+      RESEND_API_KEY: 're_test_dummy_key',
+      EMAIL_FROM: 'TAROTRIA <no-reply@tarotria.com>',
+    });
+
+    expect(result.RESEND_API_KEY).toBe('re_test_dummy_key');
+    expect(result.EMAIL_FROM).toBe('TAROTRIA <no-reply@tarotria.com>');
   });
 
   it('treats an empty SENTRY_DSN as not configured', () => {
@@ -82,6 +103,7 @@ describe('validateEnv', () => {
       JWT_ACCESS_SECRET,
       JWT_REFRESH_SECRET,
       DAILY_CARD_SECRET,
+      REWARDS_STUB_SECRET,
       OPENAI_API_KEY,
       OPENAI_MODEL: 'gpt-4o',
       DATABASE_URL,
@@ -112,6 +134,7 @@ describe('validateEnv', () => {
       JWT_ACCESS_SECRET,
       JWT_REFRESH_SECRET,
       DAILY_CARD_SECRET,
+      REWARDS_STUB_SECRET,
       OPENAI_API_KEY,
       OPENAI_MODEL: 'gpt-4o',
       DATABASE_URL,
@@ -132,6 +155,7 @@ describe('validateEnv', () => {
       WOMPI_INTEGRITY_SECRET,
       WOMPI_API_URL: 'https://production.wompi.co/v1',
       AI_COST_USD_TO_COP_RATE: 3900,
+      EMAIL_FROM: 'TAROTRIA <onboarding@resend.dev>',
     });
   });
 

@@ -15,6 +15,7 @@ import { HealthModule } from './health/health.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReadingsModule } from './readings/readings.module';
+import { RewardsModule } from './rewards/rewards.module';
 import { ServicesModule } from './services/services.module';
 import { SharingHttpModule } from './sharing/sharing-http.module';
 import { TarotModule } from './tarot/tarot.module';
@@ -35,6 +36,7 @@ import { WalletHttpModule } from './wallet/wallet-http.module';
     TarotModule,
     DailyCardModule,
     ReadingsModule,
+    RewardsModule,
     WalletHttpModule,
     CreditPackagesModule,
     OrdersModule,

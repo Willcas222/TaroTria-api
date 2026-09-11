@@ -41,6 +41,29 @@ export function toAdminAiExecutionSummary(
   };
 }
 
+// Adopción de cada profundidad de tirada (sección 24 del documento de
+// tiradas: "porcentaje de usuarios que eligen 3/5/10 cartas").
+export interface TarotDepthBreakdownEntry {
+  code: string;
+  readingsCount: number;
+  percentage: number;
+}
+
+// Embudo de publicidad recompensada (sección 11 del documento de ads:
+// "Impressions, Completed Rewards, Reward Completion Rate...").
+export interface RewardTypeFunnel {
+  sessionsCreated: number;
+  sessionsCompleted: number;
+  completionRate: number;
+}
+
+export interface RewardFunnelMetrics {
+  sessionsCreated: number;
+  sessionsCompleted: number;
+  completionRate: number;
+  byType: Record<string, RewardTypeFunnel>;
+}
+
 export interface AdminMetrics {
   totalUsers: number;
   readingsByStatus: Record<string, number>;
@@ -54,4 +77,13 @@ export interface AdminMetrics {
   aiCostEstimateUsd: number;
   aiCostEstimateCents: number;
   marginCents: number;
+  // Sección 12 del modelo de negocio y sección 24 del documento de tiradas.
+  tarotDepthBreakdown: TarotDepthBreakdownEntry[];
+  avgCardsPerReading: number;
+  avgCreditsPerTarotReading: number;
+  readingsPerUser: number;
+  rewardFunnel: RewardFunnelMetrics;
+  // % de usuarios que vieron al menos un anuncio Y compraron al menos un
+  // paquete de créditos (sección 24: "Publicidad -> compra de tokens").
+  adToPurchaseConversionRate: number;
 }

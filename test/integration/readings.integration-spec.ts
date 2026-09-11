@@ -40,13 +40,6 @@ const TAROT_THREE_FORM_SCHEMA = {
       minLength: 5,
       maxLength: 500,
     },
-    {
-      key: 'topic',
-      type: 'select',
-      label: 'Tema',
-      required: true,
-      options: ['LOVE', 'WORK', 'MONEY', 'PERSONAL'],
-    },
   ],
 };
 
@@ -246,7 +239,7 @@ describe('Readings (integration, isolated database)', () => {
       .patch(`/api/v1/readings/${readingId}/inputs`)
       .set('Cookie', cookie)
       .send({
-        answers: { question: '¿Qué me depara el futuro?', topic: 'WORK' },
+        answers: { question: '¿Qué me depara el futuro?' },
       })
       .expect(200);
 
@@ -277,7 +270,7 @@ describe('Readings (integration, isolated database)', () => {
     await request(app.getHttpServer())
       .patch(`/api/v1/readings/${readingId}/inputs`)
       .set('Cookie', cookie)
-      .send({ answers: { question: 'Otra pregunta valida', topic: 'LOVE' } })
+      .send({ answers: { question: 'Otra pregunta valida' } })
       .expect(400);
 
     await request(app.getHttpServer())
@@ -351,7 +344,7 @@ describe('Readings (integration, isolated database)', () => {
     await request(app.getHttpServer())
       .patch(`/api/v1/readings/${readingId}/inputs`)
       .set('Cookie', toCookieHeader(intruderTokens))
-      .send({ answers: { question: 'Not my reading', topic: 'WORK' } })
+      .send({ answers: { question: 'Not my reading' } })
       .expect(404);
 
     await request(app.getHttpServer())
@@ -385,7 +378,7 @@ describe('Readings (integration, isolated database)', () => {
       .patch(`/api/v1/readings/${readingId}/inputs`)
       .set('Cookie', cookie)
       .send({
-        answers: { question: '¿Qué me depara el futuro?', topic: 'WORK' },
+        answers: { question: '¿Qué me depara el futuro?' },
       })
       .expect(200);
 

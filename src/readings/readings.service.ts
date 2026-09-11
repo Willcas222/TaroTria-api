@@ -26,6 +26,7 @@ import {
   IMAGE_ANALYSIS_QUEUE,
   READING_PROCESSING_QUEUE,
 } from '../queues/queues.module';
+import { RewardsService } from '../rewards/rewards.service';
 import { SharingService } from '../sharing/sharing.service';
 import {
   readImageDimensions,
@@ -57,6 +58,13 @@ import {
   type ReadingSummary,
 } from './reading.types';
 
+// Sección 3 del documento de publicidad recompensada ("LECTURA DE TAROT: 5
+// anuncios -> desbloquea una lectura"): se escribió pensando en una única
+// tirada de tarot. Ahora que existen 3 profundidades (TAROT_THREE/FIVE/TEN),
+// el desbloqueo gratis aplica solo a la más básica -- las tiradas más
+// profundas siguen siendo exclusivamente de pago.
+const AD_UNLOCKABLE_TAROT_SERVICE_CODE = 'TAROT_THREE';
+
 const DETAIL_INCLUDE = {
   service: true,
   spread: { include: { positions: true } },
@@ -80,6 +88,7 @@ export class ReadingsService {
     private readonly configService: ConfigService,
     private readonly walletService: WalletService,
     private readonly sharingService: SharingService,
+    private readonly rewardsService: RewardsService,
     @InjectQueue(READING_PROCESSING_QUEUE)
     private readonly readingQueue: Queue<ProcessReadingJobData>,
     @InjectQueue(IMAGE_ANALYSIS_QUEUE)
@@ -383,11 +392,30 @@ export class ReadingsService {
 
     try {
       await this.prisma.$transaction(async (tx) => {
+        // El sistema decide solo si esta lectura se paga con créditos o ya
+        // fue ganada viendo anuncios (sección 1 del documento de tiradas:
+        // "sistema determina si utilizar tokens o desbloqueo mediante
+        // publicidad") -- nunca depende de lo que diga el frontend. El
+        // consumo del desbloqueo va en la misma transacción que la reserva
+        // de créditos: si algo falla a la mitad, no se pierde el anuncio ya
+        // visto ni se cobra por una lectura que no se llegó a crear.
+        let creditCost = service.creditCost;
+        if (service.code === AD_UNLOCKABLE_TAROT_SERVICE_CODE) {
+          const unlockedViaAds = await this.rewardsService.tryConsumeUnlock(
+            userId,
+            'TAROT_READING_UNLOCK',
+            tx,
+          );
+          if (unlockedViaAds) {
+            creditCost = 0;
+          }
+        }
+
         await this.walletService.reserveCreditsForReading(
           tx,
           userId,
           readingId,
-          service.creditCost,
+          creditCost,
         );
         await tx.tarotDraw.createMany({
           data: draws.map((draw) => ({

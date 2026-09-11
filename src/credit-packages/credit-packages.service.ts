@@ -25,9 +25,12 @@ export class CreditPackagesService {
       return cached;
     }
 
+    // Orden descendente por precio (sección 7 del modelo de negocio: efecto
+    // de anclaje — mostrar primero el paquete de mayor valor establece una
+    // referencia alta para que los siguientes se perciban más accesibles).
     const packages = await this.prisma.creditPackage.findMany({
       where: { isActive: true },
-      orderBy: { credits: 'asc' },
+      orderBy: { priceCents: 'desc' },
     });
 
     const result = packages.map(toCreditPackageSummary);

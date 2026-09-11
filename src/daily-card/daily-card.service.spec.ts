@@ -2,6 +2,8 @@ import { createHmac } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { CacheService } from '../cache/cache.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { RewardsService } from '../rewards/rewards.service';
 import { DEFAULT_TAROT_DECK_CODE } from '../tarot/tarot.constants';
 import { TarotService } from '../tarot/tarot.service';
 import { dailyCardCacheKey } from './daily-card.constants';
@@ -46,6 +48,11 @@ describe('DailyCardService', () => {
   let cache: { get: jest.Mock; set: jest.Mock; del: jest.Mock };
   let tarotService: { getActiveDeckCards: jest.Mock };
   let configService: { get: jest.Mock };
+  let prisma: { user: { findUnique: jest.Mock } };
+  let rewardsService: {
+    getProgress: jest.Mock;
+    tryConsumeUnlock: jest.Mock;
+  };
 
   beforeEach(async () => {
     cache = {
@@ -59,6 +66,20 @@ describe('DailyCardService', () => {
     configService = {
       get: jest.fn().mockReturnValue(SECRET),
     };
+    // Registrado "hoy" por defecto: dentro de la ventana gratis de 5 días
+    // para la mayoría de los tests, que solo mueven la fecha "actual", no la
+    // de registro.
+    prisma = {
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ createdAt: new Date('2026-09-03T00:00:00Z') }),
+      },
+    };
+    rewardsService = {
+      getProgress: jest.fn(),
+      tryConsumeUnlock: jest.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -66,6 +87,8 @@ describe('DailyCardService', () => {
         { provide: CacheService, useValue: cache },
         { provide: TarotService, useValue: tarotService },
         { provide: ConfigService, useValue: configService },
+        { provide: PrismaService, useValue: prisma },
+        { provide: RewardsService, useValue: rewardsService },
       ],
     }).compile();
 
@@ -78,6 +101,7 @@ describe('DailyCardService', () => {
 
     const result = await service.getTodaysCard('user-1', today);
 
+    if (result.locked) throw new Error('expected an unlocked result');
     expect(result.card.code).toBe(card.code);
     expect(result.orientation).toBe(orientation);
     expect(result.interpretation).toBe(
@@ -110,5 +134,37 @@ describe('DailyCardService', () => {
     expect(tarotService.getActiveDeckCards).toHaveBeenCalledWith(
       DEFAULT_TAROT_DECK_CODE,
     );
+  });
+
+  describe('after the 5 free days', () => {
+    const today = new Date('2026-09-10T00:00:00Z'); // día 8 desde el registro
+
+    it('returns a locked result requiring an ad when the unlock could not be consumed', async () => {
+      rewardsService.tryConsumeUnlock.mockResolvedValue(false);
+      rewardsService.getProgress.mockResolvedValue({
+        rewardType: 'DAILY_CARD_UNLOCK',
+        currentCount: 0,
+        requiredCount: 1,
+        unlocked: false,
+      });
+
+      const result = await service.getTodaysCard('user-1', today);
+
+      expect(result).toEqual({ locked: true, requiredAds: 1 });
+      expect(tarotService.getActiveDeckCards).not.toHaveBeenCalled();
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('returns the card once the ad-based unlock is atomically consumed', async () => {
+      rewardsService.tryConsumeUnlock.mockResolvedValue(true);
+
+      const result = await service.getTodaysCard('user-1', today);
+
+      expect(result.locked).toBe(false);
+      expect(rewardsService.tryConsumeUnlock).toHaveBeenCalledWith(
+        'user-1',
+        'DAILY_CARD_UNLOCK',
+      );
+    });
   });
 });

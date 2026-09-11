@@ -23,6 +23,11 @@ export const envSchema = z
     DAILY_CARD_SECRET: z
       .string()
       .min(32, 'DAILY_CARD_SECRET must be at least 32 characters'),
+    // Secreto compartido del proveedor de publicidad "stub" (pruebas
+    // locales/CI, sin proveedor real todavía -- ver StubAdCallbackVerifier).
+    REWARDS_STUB_SECRET: z
+      .string()
+      .min(16, 'REWARDS_STUB_SECRET must be at least 16 characters'),
     OPENAI_API_KEY: z
       .string()
       .min(20, 'OPENAI_API_KEY must be a valid OpenAI API key'),
@@ -100,6 +105,18 @@ export const envSchema = z
       .optional()
       .or(z.literal(''))
       .transform((value) => (value ? value : undefined)),
+    // Igual que SENTRY_DSN: opcional a propósito. Sin ella, NotificationsModule
+    // usa ConsoleNotificationsProvider (solo registra en log, no envía nada de
+    // verdad) — ver notifications.module.ts. Con ella, usa Resend de verdad.
+    RESEND_API_KEY: z
+      .string()
+      .optional()
+      .or(z.literal(''))
+      .transform((value) => (value ? value : undefined)),
+    EMAIL_FROM: z
+      .string()
+      .min(1, 'EMAIL_FROM is required')
+      .default('TAROTRIA <onboarding@resend.dev>'),
   })
   .refine((data) => data.JWT_ACCESS_SECRET !== data.JWT_REFRESH_SECRET, {
     message: 'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different',

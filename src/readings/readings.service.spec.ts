@@ -7,6 +7,7 @@ import {
   IMAGE_ANALYSIS_QUEUE,
   READING_PROCESSING_QUEUE,
 } from '../queues/queues.module';
+import { RewardsService } from '../rewards/rewards.service';
 import { SharingService } from '../sharing/sharing.service';
 import {
   readImageDimensions,
@@ -116,6 +117,7 @@ describe('ReadingsService', () => {
   let configService: { get: jest.Mock };
   let walletService: { reserveCreditsForReading: jest.Mock };
   let sharingService: { getActiveShareLinkSummary: jest.Mock };
+  let rewardsService: { tryConsumeUnlock: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -150,6 +152,12 @@ describe('ReadingsService', () => {
     sharingService = {
       getActiveShareLinkSummary: jest.fn().mockResolvedValue(null),
     };
+    rewardsService = {
+      // Por defecto ninguna prueba tiene un desbloqueo por anuncios ya
+      // ganado -- se comportan igual que antes de que existiera esta
+      // función, cobrando el costo normal en créditos.
+      tryConsumeUnlock: jest.fn().mockResolvedValue(false),
+    };
     storageService = {
       buildPalmImageKey: jest.fn().mockReturnValue('palm-reading/key.jpg'),
       createPresignedUploadUrl: jest.fn().mockResolvedValue({
@@ -181,6 +189,7 @@ describe('ReadingsService', () => {
         { provide: ConfigService, useValue: configService },
         { provide: WalletService, useValue: walletService },
         { provide: SharingService, useValue: sharingService },
+        { provide: RewardsService, useValue: rewardsService },
         {
           provide: getQueueToken(READING_PROCESSING_QUEUE),
           useValue: readingQueue,
@@ -771,6 +780,90 @@ describe('ReadingsService', () => {
         'PROCESS_TAROT',
         { readingId: 'reading-1' },
         { jobId: 'PROCESS_TAROT-reading-1' },
+      );
+      expect(rewardsService.tryConsumeUnlock).toHaveBeenCalledWith(
+        'user-1',
+        'TAROT_READING_UNLOCK',
+        prisma,
+      );
+    });
+
+    it('charges zero credits when the ad-based unlock was already earned, instead of the configured price', async () => {
+      rewardsService.tryConsumeUnlock.mockResolvedValue(true);
+      prisma.service.findUniqueOrThrow.mockResolvedValue(baseService);
+      prisma.reading.findFirst
+        .mockResolvedValueOnce(baseReading)
+        .mockResolvedValueOnce({
+          ...baseReading,
+          status: 'PENDING',
+          service: baseService,
+          spread: { positions: [] },
+          input: { formVersion: 1, answers: {} },
+          draws: [],
+          aiExecutions: [],
+          palmImages: [],
+        });
+      prisma.readingInput.findUnique.mockResolvedValue({
+        readingId: 'reading-1',
+      });
+      prisma.tarotSpread.findUniqueOrThrow.mockResolvedValue({
+        id: 'spread-1',
+        positions: [{ code: 'PAST', orderIndex: 0 }],
+      });
+      tarotService.getActiveDeckCards.mockResolvedValue([
+        { id: 'card-1', code: 'THE_FOOL' },
+      ]);
+      drawEngine.draw.mockReturnValue([
+        { position: 'PAST', card: { id: 'card-1' }, orientation: 'UPRIGHT' },
+      ]);
+
+      await service.submit('user-1', 'reading-1');
+
+      expect(walletService.reserveCreditsForReading).toHaveBeenCalledWith(
+        prisma,
+        'user-1',
+        'reading-1',
+        0,
+      );
+    });
+
+    it('does not check or consume the ad-based unlock for a deeper spread than the base tier', async () => {
+      const fiveCardService = { ...baseService, code: 'TAROT_FIVE', creditCost: 18 };
+      prisma.service.findUniqueOrThrow.mockResolvedValue(fiveCardService);
+      prisma.reading.findFirst
+        .mockResolvedValueOnce({ ...baseReading, serviceId: 'service-five' })
+        .mockResolvedValueOnce({
+          ...baseReading,
+          status: 'PENDING',
+          service: fiveCardService,
+          spread: { positions: [] },
+          input: { formVersion: 1, answers: {} },
+          draws: [],
+          aiExecutions: [],
+          palmImages: [],
+        });
+      prisma.readingInput.findUnique.mockResolvedValue({
+        readingId: 'reading-1',
+      });
+      prisma.tarotSpread.findUniqueOrThrow.mockResolvedValue({
+        id: 'spread-1',
+        positions: [{ code: 'PAST', orderIndex: 0 }],
+      });
+      tarotService.getActiveDeckCards.mockResolvedValue([
+        { id: 'card-1', code: 'THE_FOOL' },
+      ]);
+      drawEngine.draw.mockReturnValue([
+        { position: 'PAST', card: { id: 'card-1' }, orientation: 'UPRIGHT' },
+      ]);
+
+      await service.submit('user-1', 'reading-1');
+
+      expect(rewardsService.tryConsumeUnlock).not.toHaveBeenCalled();
+      expect(walletService.reserveCreditsForReading).toHaveBeenCalledWith(
+        prisma,
+        'user-1',
+        'reading-1',
+        18,
       );
     });
 

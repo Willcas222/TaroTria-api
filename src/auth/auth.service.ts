@@ -315,6 +315,40 @@ export class AuthService {
     ]);
   }
 
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException(INVALID_SESSION_MESSAGE);
+    }
+
+    const passwordValid = await argon2.verify(
+      user.passwordHash,
+      currentPassword,
+    );
+    if (!passwordValid) {
+      throw new UnauthorizedException('La contraseña actual no es correcta.');
+    }
+
+    const passwordHash = await argon2.hash(newPassword);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      }),
+      // Igual que en resetPassword: un cambio de contraseña cierra todas las
+      // sesiones existentes, incluida la actual.
+      this.prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+  }
+
   async getSafeUserById(userId: string): Promise<SafeUser | null> {
     const user = await this.usersService.findById(userId);
     return user ? toSafeUser(user) : null;

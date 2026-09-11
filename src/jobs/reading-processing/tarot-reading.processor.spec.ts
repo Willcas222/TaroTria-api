@@ -1,7 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { AiOrchestratorService } from '../../ai/ai-orchestrator.service';
 import { PromptsService } from '../../ai/prompts.service';
-import { TAROT_INTERPRETATION_TASK } from '../../ai/tasks/tarot-interpretation.schema';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WalletService } from '../../wallet/wallet.service';
 import { TarotReadingProcessor } from './tarot-reading.processor';
@@ -9,7 +8,8 @@ import { TarotReadingProcessor } from './tarot-reading.processor';
 const baseReading = {
   id: 'reading-1',
   status: 'PENDING' as const,
-  input: { answers: { question: '¿Qué me depara?', topic: 'WORK' } },
+  service: { code: 'TAROT_THREE' },
+  input: { answers: { question: '¿Qué me depara?' } },
   spread: {
     positions: [
       { code: 'PAST', orderIndex: 0 },
@@ -115,7 +115,7 @@ describe('TarotReadingProcessor', () => {
       await processor.processReading('reading-1');
 
       expect(promptsService.getPublishedVersionId).toHaveBeenCalledWith(
-        TAROT_INTERPRETATION_TASK,
+        'TAROT_THREE_INTERPRETATION',
       );
 
       expect(prisma.reading.update).toHaveBeenNthCalledWith(1, {
@@ -128,7 +128,6 @@ describe('TarotReadingProcessor', () => {
         readingId: 'reading-1',
         variables: {
           question: '¿Qué me depara?',
-          topic: 'WORK',
           cards:
             'PAST: Reina de Bastos de Bastos (invertida)\nPRESENT: El Mago (derecha)\nTREND: El Mundo (derecha)',
         },
@@ -143,6 +142,24 @@ describe('TarotReadingProcessor', () => {
         'reading-1',
       );
       expect(walletService.releaseReservation).not.toHaveBeenCalled();
+    });
+
+    it('resolves the prompt code from the reading service, so a different spread depth uses its own prompt', async () => {
+      prisma.reading.findUnique.mockResolvedValue({
+        ...baseReading,
+        service: { code: 'TAROT_FIVE' },
+      });
+      aiOrchestrator.execute.mockResolvedValue({
+        aiExecutionId: 'exec-1',
+        status: 'COMPLETED',
+        output: { title: 'x' },
+      });
+
+      await processor.processReading('reading-1');
+
+      expect(promptsService.getPublishedVersionId).toHaveBeenCalledWith(
+        'TAROT_FIVE_INTERPRETATION',
+      );
     });
 
     it('marks the reading FAILED and releases the credit reservation when the orchestrator reports a terminal failure', async () => {

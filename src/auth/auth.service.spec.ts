@@ -553,4 +553,63 @@ describe('AuthService', () => {
       ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
+
+  describe('changePassword', () => {
+    it('updates the password hash and revokes all existing sessions when the current password matches', async () => {
+      const currentHash = await argon2.hash('old-supersecret');
+      usersService.findById.mockResolvedValue(
+        makeUser({ passwordHash: currentHash }),
+      );
+
+      await service.changePassword(
+        'user-1',
+        'old-supersecret',
+        'new-supersecret-password',
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      const userUpdateCall = prisma.user.update.mock.calls[0][0];
+      expect(userUpdateCall.data.passwordHash).not.toBe(
+        'new-supersecret-password',
+      );
+      expect(
+        await argon2.verify(
+          userUpdateCall.data.passwordHash,
+          'new-supersecret-password',
+        ),
+      ).toBe(true);
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null },
+        data: expect.objectContaining({ revokedAt: expect.any(Date) }),
+      });
+    });
+
+    it('rejects when the current password does not match', async () => {
+      const currentHash = await argon2.hash('old-supersecret');
+      usersService.findById.mockResolvedValue(
+        makeUser({ passwordHash: currentHash }),
+      );
+
+      await expect(
+        service.changePassword(
+          'user-1',
+          'wrong-password',
+          'new-supersecret-password',
+        ),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the user no longer exists', async () => {
+      usersService.findById.mockResolvedValue(null);
+
+      await expect(
+        service.changePassword(
+          'user-1',
+          'old-supersecret',
+          'new-supersecret-password',
+        ),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
 });

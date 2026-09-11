@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  Patch,
   Post,
   Req,
   Res,
@@ -18,6 +19,7 @@ import { AuthService } from './auth.service';
 import { REFRESH_TOKEN_COOKIE } from './auth.constants';
 import { getCookie } from './cookie-reader.util';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -127,5 +129,25 @@ export class AuthController {
       throw new NotFoundException('Usuario no encontrado.');
     }
     return { user };
+  }
+
+  @Throttle(AUTH_THROTTLE)
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Patch('password')
+  async changePassword(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.authService.changePassword(
+      currentUser.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
+    // Se revocaron todas las sesiones (incluida la actual): limpia las
+    // cookies para que el front sepa que debe volver a iniciar sesión.
+    this.cookieService.clearAuthCookies(res);
+    return { success: true };
   }
 }

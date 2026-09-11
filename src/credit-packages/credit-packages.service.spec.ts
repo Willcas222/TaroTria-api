@@ -21,6 +21,7 @@ describe('CreditPackagesService', () => {
     priceCents: 990000,
     currency: 'COP',
     isActive: true,
+    isRecommended: false,
   };
 
   beforeEach(async () => {
@@ -54,14 +55,14 @@ describe('CreditPackagesService', () => {
       expect(prisma.creditPackage.findMany).not.toHaveBeenCalled();
     });
 
-    it('queries active packages ordered by credits and caches the mapped result', async () => {
+    it('queries active packages ordered by price descending (efecto anclaje) and caches the mapped result', async () => {
       prisma.creditPackage.findMany.mockResolvedValue([basePackage]);
 
       const result = await service.listActive();
 
       expect(prisma.creditPackage.findMany).toHaveBeenCalledWith({
         where: { isActive: true },
-        orderBy: { credits: 'asc' },
+        orderBy: { priceCents: 'desc' },
       });
       expect(result).toEqual([
         {
@@ -71,6 +72,7 @@ describe('CreditPackagesService', () => {
           credits: 50,
           priceCents: 990000,
           currency: 'COP',
+          isRecommended: false,
         },
       ]);
       expect(cache.set).toHaveBeenCalledWith(
