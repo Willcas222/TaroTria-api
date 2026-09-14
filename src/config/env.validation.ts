@@ -117,6 +117,14 @@ export const envSchema = z
       .string()
       .min(1, 'EMAIL_FROM is required')
       .default('TAROTRIA <onboarding@resend.dev>'),
+    // Opcional a propósito: solo hace falta cuando la API y el frontend
+    // viven en subdominios distintos del mismo dominio (producción). Sin
+    // ella, las cookies de sesión quedan atadas solo al host que las puso.
+    COOKIE_DOMAIN: z
+      .string()
+      .optional()
+      .or(z.literal(''))
+      .transform((value) => (value ? value : undefined)),
   })
   .refine((data) => data.JWT_ACCESS_SECRET !== data.JWT_REFRESH_SECRET, {
     message: 'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different',
