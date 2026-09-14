@@ -23,6 +23,10 @@ FROM node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
+# `deps` nunca corrió `prisma generate` -- el cliente generado (motor +
+# tipos) vive en node_modules/.prisma y hay que traerlo aparte desde el
+# stage de build, si no @prisma/client no encuentra nada en runtime.
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma
 COPY package.json ./
