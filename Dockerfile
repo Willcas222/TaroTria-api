@@ -24,6 +24,11 @@ RUN npm run build
 FROM node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Node >=20.19 activa por defecto la heurística "detect-module", que rompe
+# `ts-node` al ejecutar prisma/seed.ts dentro del contenedor (lo hace pasar
+# por el loader ESM y falla con ERR_UNKNOWN_FILE_EXTENSION). Se desactiva
+# aquí -- no afecta a `node dist/main.js`, que ya es CommonJS compilado.
+ENV NODE_OPTIONS=--no-experimental-detect-module
 # El motor de consultas de Prisma necesita libssl -- node:20-slim no lo trae
 # instalado, y sin esto usa un fallback que puede fallar en runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
@@ -35,10 +40,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma
-# prisma.config.ts vive en la raíz (junto a package.json, no dentro de
-# prisma/) -- sin copiarlo, `prisma migrate deploy` no encuentra el
-# datasource y falla aunque el cliente ya esté generado.
-COPY prisma.config.ts ./
+# prisma.config.ts y tsconfig.json viven en la raíz (junto a package.json,
+# no dentro de prisma/) -- sin copiarlos, `prisma migrate deploy`/`db seed`
+# no encuentran el datasource ni la config de TypeScript y fallan aunque el
+# cliente ya esté generado.
+COPY prisma.config.ts tsconfig.json ./
 COPY package.json ./
 EXPOSE 3000
 CMD ["node", "dist/main"]
