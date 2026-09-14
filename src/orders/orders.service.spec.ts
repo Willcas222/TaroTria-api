@@ -6,13 +6,16 @@ import { OrdersService } from './orders.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
+  let txOrderCreate: jest.Mock;
+  let txFlashOfferFindFirst: jest.Mock;
+  let txFlashOfferUpdateMany: jest.Mock;
   let prisma: {
     order: {
-      create: jest.Mock;
       findFirst: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
     };
+    $transaction: jest.Mock;
   };
   let creditPackagesService: { findActiveByCode: jest.Mock };
 
@@ -30,19 +33,32 @@ describe('OrdersService', () => {
     creditPackageId: 'pkg-1',
     credits: 50,
     priceCents: 990000,
+    discountAppliedPercent: null,
     currency: 'COP',
     status: 'PENDING',
     createdAt: new Date(),
   };
 
   beforeEach(async () => {
+    txOrderCreate = jest.fn().mockResolvedValue(baseOrder);
+    txFlashOfferFindFirst = jest.fn().mockResolvedValue(null);
+    txFlashOfferUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+
     prisma = {
       order: {
-        create: jest.fn(),
         findFirst: jest.fn(),
         findMany: jest.fn(),
         count: jest.fn(),
       },
+      $transaction: jest.fn(async (callback: (tx: unknown) => unknown) =>
+        callback({
+          order: { create: txOrderCreate },
+          flashOfferUnlock: {
+            findFirst: txFlashOfferFindFirst,
+            updateMany: txFlashOfferUpdateMany,
+          },
+        }),
+      ),
     };
     creditPackagesService = { findActiveByCode: jest.fn() };
 
@@ -60,16 +76,25 @@ describe('OrdersService', () => {
   describe('create', () => {
     it('freezes the price and credits copied from the package at creation time', async () => {
       creditPackagesService.findActiveByCode.mockResolvedValue(basePackage);
-      prisma.order.create.mockResolvedValue(baseOrder);
 
       const result = await service.create('user-1', 'STARTER');
 
-      expect(prisma.order.create).toHaveBeenCalledWith({
+      expect(txFlashOfferFindFirst).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          packageCode: 'STARTER',
+          consumedAt: null,
+          expiresAt: { gt: expect.any(Date) },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(txOrderCreate).toHaveBeenCalledWith({
         data: {
           userId: 'user-1',
           creditPackageId: 'pkg-1',
           credits: 50,
           priceCents: 990000,
+          discountAppliedPercent: null,
           currency: 'COP',
           status: 'PENDING',
         },
@@ -79,6 +104,7 @@ describe('OrdersService', () => {
         status: 'PENDING',
         credits: 50,
         priceCents: 990000,
+        discountAppliedPercent: null,
         currency: 'COP',
         createdAt: baseOrder.createdAt,
       });
@@ -92,7 +118,83 @@ describe('OrdersService', () => {
       await expect(service.create('user-1', 'UNKNOWN')).rejects.toBeInstanceOf(
         NotFoundException,
       );
-      expect(prisma.order.create).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('applies and consumes an active flash offer for the matching package', async () => {
+      creditPackagesService.findActiveByCode.mockResolvedValue(basePackage);
+      const activeOffer = {
+        id: 'offer-1',
+        userId: 'user-1',
+        packageCode: 'STARTER',
+        discountPercent: 20,
+        expiresAt: new Date(Date.now() + 60_000),
+        consumedAt: null,
+        createdAt: new Date(),
+      };
+      txFlashOfferFindFirst.mockResolvedValue(activeOffer);
+      txOrderCreate.mockResolvedValue({
+        ...baseOrder,
+        priceCents: 792000,
+        discountAppliedPercent: 20,
+      });
+
+      const result = await service.create('user-1', 'STARTER');
+
+      expect(txFlashOfferUpdateMany).toHaveBeenCalledWith({
+        where: { id: 'offer-1', consumedAt: null },
+        data: { consumedAt: expect.any(Date) },
+      });
+      expect(txOrderCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          priceCents: 792000,
+          discountAppliedPercent: 20,
+        }),
+      });
+      expect(result.priceCents).toBe(792000);
+      expect(result.discountAppliedPercent).toBe(20);
+    });
+
+    it('does not apply a discount when the offer was already consumed by a concurrent order', async () => {
+      creditPackagesService.findActiveByCode.mockResolvedValue(basePackage);
+      txFlashOfferFindFirst.mockResolvedValue({
+        id: 'offer-1',
+        userId: 'user-1',
+        packageCode: 'STARTER',
+        discountPercent: 20,
+        expiresAt: new Date(Date.now() + 60_000),
+        consumedAt: null,
+        createdAt: new Date(),
+      });
+      // El updateMany no afectó ninguna fila: otra orden concurrente ya la
+      // había consumido justo antes.
+      txFlashOfferUpdateMany.mockResolvedValue({ count: 0 });
+
+      await service.create('user-1', 'STARTER');
+
+      expect(txOrderCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          priceCents: 990000,
+          discountAppliedPercent: null,
+        }),
+      });
+    });
+
+    it('ignores an active flash offer for a different package', async () => {
+      creditPackagesService.findActiveByCode.mockResolvedValue(basePackage);
+      // El mock de findFirst ya filtra por packageCode en la llamada real;
+      // aquí simulamos que Prisma no encontró ninguna coincidencia.
+      txFlashOfferFindFirst.mockResolvedValue(null);
+
+      await service.create('user-1', 'STARTER');
+
+      expect(txFlashOfferUpdateMany).not.toHaveBeenCalled();
+      expect(txOrderCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          priceCents: 990000,
+          discountAppliedPercent: null,
+        }),
+      });
     });
   });
 
@@ -135,6 +237,7 @@ describe('OrdersService', () => {
             status: 'PENDING',
             credits: 50,
             priceCents: 990000,
+            discountAppliedPercent: null,
             currency: 'COP',
             createdAt: baseOrder.createdAt,
             userId: 'user-1',

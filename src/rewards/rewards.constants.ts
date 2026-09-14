@@ -17,3 +17,13 @@ export const REWARD_SESSION_TTL_SECONDS = 10 * 60;
 // Límite de ofertas flash promocionales por usuario por día (sección 10 del
 // modelo de negocio).
 export const FLASH_OFFER_DAILY_LIMIT = 1;
+
+// Paquete al que aplica el descuento y qué tan grande es (sección 10):
+// paquete de entrada para no canibalizar ventas del paquete "señuelo"
+// (PRO_ASTRAL), 20% para que se sienta real sin golpear demasiado el margen.
+export const FLASH_OFFER_PACKAGE_CODE = 'BASICO_FUEGO';
+export const FLASH_OFFER_DISCOUNT_PERCENT = 20;
+
+// Cuánto tiempo sigue siendo válida la oferta una vez desbloqueada antes de
+// expirar sin usarse -- la urgencia es parte del efecto buscado.
+export const FLASH_OFFER_WINDOW_MINUTES = 30;

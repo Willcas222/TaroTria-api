@@ -13,12 +13,17 @@ import type { AdCallbackVerifier } from './ad-callback-verifier.interface';
 import { AD_CALLBACK_VERIFIERS } from './ad-callback-verifier.interface';
 import {
   FLASH_OFFER_DAILY_LIMIT,
+  FLASH_OFFER_DISCOUNT_PERCENT,
+  FLASH_OFFER_PACKAGE_CODE,
+  FLASH_OFFER_WINDOW_MINUTES,
   REWARD_ADS_REQUIRED,
   REWARD_SESSION_TTL_SECONDS,
 } from './rewards.constants';
 import {
   REWARD_ANALYTICS_EVENTS,
+  toFlashOfferSummary,
   toRewardSessionSummary,
+  type FlashOfferSummary,
   type RewardProgressSummary,
   type RewardSessionSummary,
 } from './rewards.types';
@@ -239,7 +244,7 @@ export class RewardsService {
           },
         });
 
-        await tx.rewardProgress.upsert({
+        const progress = await tx.rewardProgress.upsert({
           where: {
             userId_rewardType: {
               userId: session.userId,
@@ -253,6 +258,36 @@ export class RewardsService {
           },
           update: { currentCount: { increment: 1 } },
         });
+
+        // La oferta flash no la consume una acción externa (a diferencia de
+        // la carta del día o una lectura): se otorga aquí mismo, en cuanto se
+        // completa el ciclo de anuncios, para poder mostrar de inmediato el
+        // descuento con su cuenta regresiva.
+        if (
+          session.rewardType === 'FLASH_OFFER_UNLOCK' &&
+          progress.currentCount >= REWARD_ADS_REQUIRED.FLASH_OFFER_UNLOCK
+        ) {
+          await tx.rewardProgress.update({
+            where: {
+              userId_rewardType: {
+                userId: session.userId,
+                rewardType: 'FLASH_OFFER_UNLOCK',
+              },
+            },
+            data: { currentCount: 0 },
+          });
+
+          await tx.flashOfferUnlock.create({
+            data: {
+              userId: session.userId,
+              packageCode: FLASH_OFFER_PACKAGE_CODE,
+              discountPercent: FLASH_OFFER_DISCOUNT_PERCENT,
+              expiresAt: new Date(
+                Date.now() + FLASH_OFFER_WINDOW_MINUTES * 60_000,
+              ),
+            },
+          });
+        }
 
         return true;
       });
@@ -279,6 +314,19 @@ export class RewardsService {
     );
 
     return { granted: true };
+  }
+
+  // Para que el frontend pueda mostrar el banner de descuento + cuenta
+  // regresiva sin importar en qué pantalla esté el usuario cuando la ganó.
+  async getActiveFlashOffer(
+    userId: string,
+  ): Promise<FlashOfferSummary | null> {
+    const offer = await this.prisma.flashOfferUnlock.findFirst({
+      where: { userId, consumedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return offer ? toFlashOfferSummary(offer) : null;
   }
 
   private async logEvent(

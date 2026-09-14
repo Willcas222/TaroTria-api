@@ -34,7 +34,13 @@ describe('RewardsService', () => {
       updateMany: jest.Mock;
     };
     rewardTransaction: { create: jest.Mock; count: jest.Mock };
-    rewardProgress: { findUnique: jest.Mock; upsert: jest.Mock; updateMany: jest.Mock };
+    rewardProgress: {
+      findUnique: jest.Mock;
+      upsert: jest.Mock;
+      updateMany: jest.Mock;
+      update: jest.Mock;
+    };
+    flashOfferUnlock: { create: jest.Mock; findFirst: jest.Mock };
     analyticsEvent: { create: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -66,8 +72,13 @@ describe('RewardsService', () => {
       },
       rewardProgress: {
         findUnique: jest.fn().mockResolvedValue(null),
-        upsert: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({ currentCount: 1 }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      flashOfferUnlock: {
+        create: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       analyticsEvent: { create: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn(async (fn) => fn(prisma)),
@@ -233,6 +244,57 @@ describe('RewardsService', () => {
       expect(prisma.rewardTransaction.create).not.toHaveBeenCalled();
     });
 
+    it('creates a FlashOfferUnlock and resets progress once the ad threshold is reached', async () => {
+      const flashSession = { ...baseSession, rewardType: 'FLASH_OFFER_UNLOCK' as const };
+      prisma.rewardSession.findUnique.mockResolvedValue(flashSession);
+      prisma.rewardProgress.upsert.mockResolvedValue({ currentCount: 2 });
+
+      const result = await service.processProviderCallback('stub', {
+        sessionId: 'session-1',
+        secret: STUB_SECRET,
+      });
+
+      expect(result).toEqual({ granted: true });
+      expect(prisma.rewardProgress.update).toHaveBeenCalledWith({
+        where: { userId_rewardType: { userId: 'user-1', rewardType: 'FLASH_OFFER_UNLOCK' } },
+        data: { currentCount: 0 },
+      });
+      expect(prisma.flashOfferUnlock.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user-1',
+          packageCode: 'BASICO_FUEGO',
+          discountPercent: 20,
+          expiresAt: expect.any(Date),
+        }),
+      });
+    });
+
+    it('does not create a FlashOfferUnlock before the ad threshold is reached', async () => {
+      const flashSession = { ...baseSession, rewardType: 'FLASH_OFFER_UNLOCK' as const };
+      prisma.rewardSession.findUnique.mockResolvedValue(flashSession);
+      prisma.rewardProgress.upsert.mockResolvedValue({ currentCount: 1 });
+
+      await service.processProviderCallback('stub', {
+        sessionId: 'session-1',
+        secret: STUB_SECRET,
+      });
+
+      expect(prisma.flashOfferUnlock.create).not.toHaveBeenCalled();
+      expect(prisma.rewardProgress.update).not.toHaveBeenCalled();
+    });
+
+    it('does not create a FlashOfferUnlock for other reward types even past their own threshold', async () => {
+      prisma.rewardSession.findUnique.mockResolvedValue(baseSession); // TAROT_READING_UNLOCK
+      prisma.rewardProgress.upsert.mockResolvedValue({ currentCount: 5 });
+
+      await service.processProviderCallback('stub', {
+        sessionId: 'session-1',
+        secret: STUB_SECRET,
+      });
+
+      expect(prisma.flashOfferUnlock.create).not.toHaveBeenCalled();
+    });
+
     it('handles a concurrent completion race without double-granting', async () => {
       prisma.rewardSession.findUnique.mockResolvedValue(baseSession);
       // Otra request ya completó la sesión justo antes de esta transacción.
@@ -310,6 +372,41 @@ describe('RewardsService', () => {
       expect(result).toBe(true);
       expect(tx.rewardProgress.updateMany).toHaveBeenCalled();
       expect(prisma.rewardProgress.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getActiveFlashOffer', () => {
+    it('returns null when there is no unconsumed, unexpired offer', async () => {
+      prisma.flashOfferUnlock.findFirst.mockResolvedValue(null);
+
+      const offer = await service.getActiveFlashOffer('user-1');
+
+      expect(offer).toBeNull();
+      expect(prisma.flashOfferUnlock.findFirst).toHaveBeenCalledWith({
+        where: { userId: 'user-1', consumedAt: null, expiresAt: { gt: expect.any(Date) } },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+
+    it('returns the offer summary when an active offer exists', async () => {
+      const expiresAt = new Date(Date.now() + 60_000);
+      prisma.flashOfferUnlock.findFirst.mockResolvedValue({
+        id: 'offer-1',
+        userId: 'user-1',
+        packageCode: 'BASICO_FUEGO',
+        discountPercent: 20,
+        expiresAt,
+        consumedAt: null,
+        createdAt: new Date(),
+      });
+
+      const offer = await service.getActiveFlashOffer('user-1');
+
+      expect(offer).toEqual({
+        packageCode: 'BASICO_FUEGO',
+        discountPercent: 20,
+        expiresAt: expiresAt.toISOString(),
+      });
     });
   });
 

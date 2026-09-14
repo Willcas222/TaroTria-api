@@ -21,15 +21,52 @@ export class OrdersService {
   async create(userId: string, packageCode: string): Promise<OrderSummary> {
     const pkg = await this.creditPackagesService.findActiveByCode(packageCode);
 
-    const order = await this.prisma.order.create({
-      data: {
-        userId,
-        creditPackageId: pkg.id,
-        credits: pkg.credits,
-        priceCents: pkg.priceCents,
-        currency: pkg.currency,
-        status: 'PENDING',
-      },
+    const order = await this.prisma.$transaction(async (tx) => {
+      let priceCents = pkg.priceCents;
+      let discountAppliedPercent: number | null = null;
+
+      // Sección 10 del modelo de negocio: si el usuario tiene una oferta
+      // flash activa para exactamente este paquete, se aplica y se consume
+      // aquí -- nunca antes (para no perderla si el usuario abandona el
+      // checkout) ni después (para que jamás se pueda reutilizar). El
+      // `updateMany` condicionado a `consumedAt: null` es lo que la hace
+      // segura ante dos compras concurrentes con la misma oferta, igual que
+      // RewardsService#tryConsumeUnlock.
+      const activeOffer = await tx.flashOfferUnlock.findFirst({
+        where: {
+          userId,
+          packageCode,
+          consumedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (activeOffer) {
+        const consumed = await tx.flashOfferUnlock.updateMany({
+          where: { id: activeOffer.id, consumedAt: null },
+          data: { consumedAt: new Date() },
+        });
+
+        if (consumed.count > 0) {
+          discountAppliedPercent = activeOffer.discountPercent;
+          priceCents = Math.round(
+            (pkg.priceCents * (100 - activeOffer.discountPercent)) / 100,
+          );
+        }
+      }
+
+      return tx.order.create({
+        data: {
+          userId,
+          creditPackageId: pkg.id,
+          credits: pkg.credits,
+          priceCents,
+          discountAppliedPercent,
+          currency: pkg.currency,
+          status: 'PENDING',
+        },
+      });
     });
 
     return toOrderSummary(order);

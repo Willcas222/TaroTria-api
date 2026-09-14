@@ -5,6 +5,7 @@ export interface OrderSummary {
   status: Order['status'];
   credits: number;
   priceCents: number;
+  discountAppliedPercent: number | null;
   currency: string;
   createdAt: Date;
 }
@@ -15,6 +16,7 @@ export function toOrderSummary(order: Order): OrderSummary {
     status: order.status,
     credits: order.credits,
     priceCents: order.priceCents,
+    discountAppliedPercent: order.discountAppliedPercent,
     currency: order.currency,
     createdAt: order.createdAt,
   };

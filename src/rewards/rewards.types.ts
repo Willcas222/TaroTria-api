@@ -1,4 +1,4 @@
-import type { RewardSession, RewardType } from '@prisma/client';
+import type { FlashOfferUnlock, RewardSession, RewardType } from '@prisma/client';
 
 export interface RewardSessionSummary {
   id: string;
@@ -25,6 +25,22 @@ export interface RewardProgressSummary {
   currentCount: number;
   requiredCount: number;
   unlocked: boolean;
+}
+
+export interface FlashOfferSummary {
+  packageCode: string;
+  discountPercent: number;
+  expiresAt: string;
+}
+
+export function toFlashOfferSummary(
+  offer: FlashOfferUnlock,
+): FlashOfferSummary {
+  return {
+    packageCode: offer.packageCode,
+    discountPercent: offer.discountPercent,
+    expiresAt: offer.expiresAt.toISOString(),
+  };
 }
 
 // Analítica mínima de la sección 10 del documento. `type` es texto libre
