@@ -11,6 +11,11 @@ FROM node:20-slim AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# `prisma generate` no se conecta a la base de datos, pero prisma.config.ts
+# exige que DATABASE_URL sea resoluble -- este valor es solo para que el
+# generate no falle en el build; el valor real de producción llega en
+# runtime vía env_file (docker-compose.yml), nunca se hornea en la imagen.
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 RUN npx prisma generate
 RUN npm run build
 
