@@ -49,20 +49,19 @@ async function seedServices() {
     });
 
     if (['TAROT_THREE', 'TAROT_FIVE', 'TAROT_TEN'].includes(service.code)) {
-      const existingForm = await prisma.serviceForm.findFirst({
-        where: { serviceId: upserted.id },
+      // upsert (no solo create-si-no-existe): así un cambio de schema en
+      // TAROT_THREE_FORM_SCHEMA se propaga al reseedear, en vez de quedar
+      // atado para siempre al primer valor que se haya insertado.
+      await prisma.serviceForm.upsert({
+        where: { serviceId_version: { serviceId: upserted.id, version: 1 } },
+        update: { schema: TAROT_THREE_FORM_SCHEMA, isActive: true },
+        create: {
+          serviceId: upserted.id,
+          version: 1,
+          schema: TAROT_THREE_FORM_SCHEMA,
+          isActive: true,
+        },
       });
-
-      if (!existingForm) {
-        await prisma.serviceForm.create({
-          data: {
-            serviceId: upserted.id,
-            version: 1,
-            schema: TAROT_THREE_FORM_SCHEMA,
-            isActive: true,
-          },
-        });
-      }
     }
   }
 }
