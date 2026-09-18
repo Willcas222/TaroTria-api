@@ -828,7 +828,11 @@ describe('ReadingsService', () => {
     });
 
     it('does not check or consume the ad-based unlock for a deeper spread than the base tier', async () => {
-      const fiveCardService = { ...baseService, code: 'TAROT_FIVE', creditCost: 18 };
+      const fiveCardService = {
+        ...baseService,
+        code: 'TAROT_FIVE',
+        creditCost: 18,
+      };
       prisma.service.findUniqueOrThrow.mockResolvedValue(fiveCardService);
       prisma.reading.findFirst
         .mockResolvedValueOnce({ ...baseReading, serviceId: 'service-five' })

@@ -12,10 +12,7 @@ import {
   DAILY_CARD_FREE_DAYS,
   dailyCardCacheKey,
 } from './daily-card.constants';
-import type {
-  CardOrientation,
-  DailyCardResponse,
-} from './daily-card.types';
+import type { CardOrientation, DailyCardResponse } from './daily-card.types';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -79,8 +76,7 @@ export class DailyCardService {
     }
 
     const daysSinceRegistration =
-      Math.floor((today.getTime() - user.createdAt.getTime()) / MS_PER_DAY) +
-      1;
+      Math.floor((today.getTime() - user.createdAt.getTime()) / MS_PER_DAY) + 1;
     return daysSinceRegistration <= DAILY_CARD_FREE_DAYS;
   }
 

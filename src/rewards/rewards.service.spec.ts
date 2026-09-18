@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -16,7 +17,7 @@ function makeStubVerifier() {
     providerName: 'stub',
     verify: jest.fn((params: Record<string, string>) => {
       if (!params.sessionId || params.secret !== STUB_SECRET) {
-        throw new (require('@nestjs/common').UnauthorizedException)(
+        throw new UnauthorizedException(
           'Firma de callback de publicidad inválida.',
         );
       }
@@ -34,7 +35,11 @@ describe('RewardsService', () => {
       updateMany: jest.Mock;
     };
     rewardTransaction: { create: jest.Mock; count: jest.Mock };
-    rewardProgress: { findUnique: jest.Mock; upsert: jest.Mock; updateMany: jest.Mock };
+    rewardProgress: {
+      findUnique: jest.Mock;
+      upsert: jest.Mock;
+      updateMany: jest.Mock;
+    };
     analyticsEvent: { create: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -95,7 +100,10 @@ describe('RewardsService', () => {
 
   describe('createSession', () => {
     it('creates a RewardSession with an expiry and logs ad_requested', async () => {
-      const result = await service.createSession('user-1', 'TAROT_READING_UNLOCK');
+      const result = await service.createSession(
+        'user-1',
+        'TAROT_READING_UNLOCK',
+      );
 
       expect(prisma.rewardSession.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -108,7 +116,10 @@ describe('RewardsService', () => {
       );
       expect(prisma.analyticsEvent.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ type: 'ad_requested', userId: 'user-1' }),
+          data: expect.objectContaining({
+            type: 'ad_requested',
+            userId: 'user-1',
+          }),
         }),
       );
       expect(result.id).toBe('session-1');
@@ -153,7 +164,9 @@ describe('RewardsService', () => {
       );
       expect(prisma.rewardProgress.upsert).toHaveBeenCalled();
       expect(prisma.analyticsEvent.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ type: 'reward_granted' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ type: 'reward_granted' }),
+        }),
       );
     });
 
@@ -211,7 +224,10 @@ describe('RewardsService', () => {
         secret: STUB_SECRET,
       });
 
-      expect(result).toEqual({ granted: false, reason: 'session_not_reusable' });
+      expect(result).toEqual({
+        granted: false,
+        reason: 'session_not_reusable',
+      });
       expect(prisma.rewardTransaction.create).not.toHaveBeenCalled();
     });
 
@@ -252,7 +268,10 @@ describe('RewardsService', () => {
     it('reports the configured threshold per reward type and whether it is reached', async () => {
       prisma.rewardProgress.findUnique.mockResolvedValue({ currentCount: 3 });
 
-      const progress = await service.getProgress('user-1', 'TAROT_READING_UNLOCK');
+      const progress = await service.getProgress(
+        'user-1',
+        'TAROT_READING_UNLOCK',
+      );
 
       expect(progress).toEqual({
         rewardType: 'TAROT_READING_UNLOCK',
@@ -275,7 +294,10 @@ describe('RewardsService', () => {
     it('resets the counter and returns true when the threshold is still reached', async () => {
       prisma.rewardProgress.updateMany.mockResolvedValue({ count: 1 });
 
-      const result = await service.tryConsumeUnlock('user-1', 'DAILY_CARD_UNLOCK');
+      const result = await service.tryConsumeUnlock(
+        'user-1',
+        'DAILY_CARD_UNLOCK',
+      );
 
       expect(result).toBe(true);
       expect(prisma.rewardProgress.updateMany).toHaveBeenCalledWith({
@@ -291,14 +313,19 @@ describe('RewardsService', () => {
     it('returns false without resetting anything when the threshold is not reached', async () => {
       prisma.rewardProgress.updateMany.mockResolvedValue({ count: 0 });
 
-      const result = await service.tryConsumeUnlock('user-1', 'TAROT_READING_UNLOCK');
+      const result = await service.tryConsumeUnlock(
+        'user-1',
+        'TAROT_READING_UNLOCK',
+      );
 
       expect(result).toBe(false);
     });
 
     it('accepts an external transaction client so callers can consume atomically alongside their own writes', async () => {
       const tx = {
-        rewardProgress: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        rewardProgress: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
       };
 
       const result = await service.tryConsumeUnlock(
@@ -317,7 +344,10 @@ describe('RewardsService', () => {
     it('grants the reward through the exact same verification path as a real callback', async () => {
       prisma.rewardSession.findUnique.mockResolvedValue(baseSession);
 
-      const result = await service.simulateStubCompletion('user-1', 'session-1');
+      const result = await service.simulateStubCompletion(
+        'user-1',
+        'session-1',
+      );
 
       expect(result).toEqual({ granted: true });
       expect(stubVerifier.verify).toHaveBeenCalledWith({

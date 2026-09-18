@@ -113,14 +113,20 @@ export class PaymentsService {
     }
 
     const payment = await this.prisma.payment.findFirst({
-      where: { orderId: order.id, provider: this.provider.name, status: 'PENDING' },
+      where: {
+        orderId: order.id,
+        provider: this.provider.name,
+        status: 'PENDING',
+      },
       orderBy: { createdAt: 'desc' },
     });
     if (!payment) {
       return; // Ya se resolvió por otra vía (webhook u otra confirmación).
     }
 
-    const transaction = await this.provider.fetchTransaction(providerTransactionId);
+    const transaction = await this.provider.fetchTransaction(
+      providerTransactionId,
+    );
     if (!transaction || transaction.reference !== payment.providerReference) {
       this.logger.warn(
         `No se pudo reconciliar el pago ${payment.id} con la transacción ${providerTransactionId} de Wompi.`,

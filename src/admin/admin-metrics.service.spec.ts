@@ -32,17 +32,24 @@ describe('AdminMetricsService', () => {
         count: jest.fn().mockResolvedValue(0),
       },
       order: {
-        aggregate: jest.fn().mockResolvedValue({ _sum: { priceCents: null }, _count: { _all: 0 } }),
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { priceCents: null },
+          _count: { _all: 0 },
+        }),
         findMany: jest.fn().mockResolvedValue([]),
       },
       aIExecution: {
         count: jest.fn().mockResolvedValue(0),
-        aggregate: jest.fn().mockResolvedValue({ _sum: { costEstimateUsd: null } }),
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _sum: { costEstimateUsd: null } }),
       },
       service: { findMany: jest.fn().mockResolvedValue(TAROT_SERVICES) },
       tarotDraw: { count: jest.fn().mockResolvedValue(0) },
       walletTransaction: {
-        aggregate: jest.fn().mockResolvedValue({ _sum: { amount: null }, _count: { _all: 0 } }),
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _sum: { amount: null }, _count: { _all: 0 } }),
       },
       rewardSession: { groupBy: jest.fn().mockResolvedValue([]) },
       rewardTransaction: { findMany: jest.fn().mockResolvedValue([]) },
@@ -73,16 +80,18 @@ describe('AdminMetricsService', () => {
   });
 
   it('computes the tarot depth breakdown, ordered from quickest to deepest, with real percentages', async () => {
-    prisma.reading.groupBy.mockImplementation(async (args: { by: string[] }) => {
-      if (args.by[0] === 'serviceId') {
-        return [
-          { serviceId: 'svc-10', _count: { _all: 1 } },
-          { serviceId: 'svc-3', _count: { _all: 6 } },
-          { serviceId: 'svc-5', _count: { _all: 3 } },
-        ];
-      }
-      return [];
-    });
+    prisma.reading.groupBy.mockImplementation(
+      async (args: { by: string[] }) => {
+        if (args.by[0] === 'serviceId') {
+          return [
+            { serviceId: 'svc-10', _count: { _all: 1 } },
+            { serviceId: 'svc-3', _count: { _all: 6 } },
+            { serviceId: 'svc-5', _count: { _all: 3 } },
+          ];
+        }
+        return [];
+      },
+    );
 
     const metrics = await service.getMetrics();
 
@@ -95,10 +104,12 @@ describe('AdminMetricsService', () => {
 
   it('computes the weighted average of cards per reading from real draws, not a hardcoded spread size', async () => {
     prisma.tarotDraw.count.mockResolvedValue(29); // 6*3 + 3*5 + 1*10 = 43... usamos un total simple
-    prisma.reading.count.mockImplementation(async (args?: { where?: { draws?: unknown } }) => {
-      if (args?.where?.draws) return 10;
-      return 0;
-    });
+    prisma.reading.count.mockImplementation(
+      async (args?: { where?: { draws?: unknown } }) => {
+        if (args?.where?.draws) return 10;
+        return 0;
+      },
+    );
 
     const metrics = await service.getMetrics();
 
@@ -118,10 +129,12 @@ describe('AdminMetricsService', () => {
 
   it('computes readings per user from total tarot readings over total users', async () => {
     prisma.user.count.mockResolvedValue(4);
-    prisma.reading.count.mockImplementation(async (args?: { where?: { service?: unknown } }) => {
-      if (args?.where?.service) return 12;
-      return 0;
-    });
+    prisma.reading.count.mockImplementation(
+      async (args?: { where?: { service?: unknown } }) => {
+        if (args?.where?.service) return 12;
+        return 0;
+      },
+    );
 
     const metrics = await service.getMetrics();
 

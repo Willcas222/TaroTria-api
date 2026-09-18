@@ -21,7 +21,11 @@ import { ResendNotificationsProvider } from './providers/resend-notifications.pr
         configService.get<string>('RESEND_API_KEY')
           ? resendProvider
           : consoleProvider,
-      inject: [ConfigService, ConsoleNotificationsProvider, ResendNotificationsProvider],
+      inject: [
+        ConfigService,
+        ConsoleNotificationsProvider,
+        ResendNotificationsProvider,
+      ],
     },
   ],
   exports: [NOTIFICATIONS_PROVIDER],

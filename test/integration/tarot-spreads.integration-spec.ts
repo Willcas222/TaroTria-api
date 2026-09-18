@@ -82,8 +82,12 @@ describe('Tarot spreads seed (integration, isolated database)', () => {
 
     const spreads = await prisma.tarotSpread.count();
     const positions = await prisma.tarotSpreadPosition.count();
+    const expectedPositions = TAROT_SPREADS.reduce(
+      (total, spread) => total + spread.positions.length,
+      0,
+    );
 
-    expect(spreads).toBe(1);
-    expect(positions).toBe(3);
+    expect(spreads).toBe(TAROT_SPREADS.length);
+    expect(positions).toBe(expectedPositions);
   });
 });

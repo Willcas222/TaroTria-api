@@ -137,7 +137,11 @@ export class AdminMetricsService {
         readingsCount: row._count._all,
         percentage: total > 0 ? row._count._all / total : 0,
       }))
-      .sort((a, b) => TAROT_SERVICE_CODES.indexOf(a.code) - TAROT_SERVICE_CODES.indexOf(b.code));
+      .sort(
+        (a, b) =>
+          TAROT_SERVICE_CODES.indexOf(a.code) -
+          TAROT_SERVICE_CODES.indexOf(b.code),
+      );
   }
 
   // Sección 12 del modelo de negocio, literal: "debe calcularse la media
@@ -215,7 +219,8 @@ export class AdminMetricsService {
     return {
       sessionsCreated,
       sessionsCompleted,
-      completionRate: sessionsCreated > 0 ? sessionsCompleted / sessionsCreated : 0,
+      completionRate:
+        sessionsCreated > 0 ? sessionsCompleted / sessionsCreated : 0,
       byType,
     };
   }

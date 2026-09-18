@@ -36,10 +36,7 @@ export class RewardsController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('rewardType') rewardType: RewardType,
   ) {
-    const progress = await this.rewardsService.getProgress(
-      user.id,
-      rewardType,
-    );
+    const progress = await this.rewardsService.getProgress(user.id, rewardType);
     return { progress };
   }
 

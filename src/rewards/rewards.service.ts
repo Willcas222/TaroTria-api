@@ -145,7 +145,10 @@ export class RewardsService {
     }
 
     const verified = verifier.verify(rawParams);
-    return this.registerCompletedSession(verified.externalSessionId, providerName);
+    return this.registerCompletedSession(
+      verified.externalSessionId,
+      providerName,
+    );
   }
 
   // Solo para desarrollo/pruebas: simula, desde dentro de nuestro propio
@@ -171,7 +174,10 @@ export class RewardsService {
     }
 
     const secret = this.configService.get<string>('REWARDS_STUB_SECRET');
-    return this.processProviderCallback('stub', { sessionId, secret: secret as string });
+    return this.processProviderCallback('stub', {
+      sessionId,
+      secret: secret as string,
+    });
   }
 
   private async registerCompletedSession(

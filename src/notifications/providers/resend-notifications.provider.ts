@@ -43,10 +43,16 @@ export class ResendNotificationsProvider implements NotificationsProvider {
   private readonly from: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.client = new Resend(
-      this.configService.get<string>('RESEND_API_KEY'),
-    );
-    this.from = this.configService.get<string>('EMAIL_FROM')!;
+    // Nest instancia todos los providers declarados en el módulo de forma
+    // eager (incluido este), sin importar cuál termine eligiendo la fábrica
+    // de NOTIFICATIONS_PROVIDER -- así que este constructor corre incluso en
+    // local/test/CI, donde RESEND_API_KEY normalmente no está definida. El
+    // SDK de Resend exige un string no vacío en el constructor; el
+    // placeholder nunca se usa para enviar nada real porque, sin
+    // RESEND_API_KEY, la fábrica siempre elige ConsoleNotificationsProvider.
+    const apiKey = this.configService.get<string>('RESEND_API_KEY');
+    this.client = new Resend(apiKey || 're_unused_placeholder');
+    this.from = this.configService.get<string>('EMAIL_FROM') ?? '';
   }
 
   async sendEmail(input: SendEmailInput): Promise<void> {

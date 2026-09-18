@@ -29,7 +29,10 @@ describe('ResendNotificationsProvider', () => {
       to: 'ana@example.com',
       subject: 'Verifica tu correo',
       templateId: 'email-verification',
-      context: { name: 'Ana', verificationUrl: 'https://app.test/verify?token=abc' },
+      context: {
+        name: 'Ana',
+        verificationUrl: 'https://app.test/verify?token=abc',
+      },
     });
 
     expect(sendMock).toHaveBeenCalledWith(

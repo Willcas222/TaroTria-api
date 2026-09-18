@@ -6,7 +6,7 @@
 > aspiracional: cada afirmación aquí corresponde a algo que existe y fue
 > verificado en el repositorio, no a una intención.
 >
-> Última actualización: 2026-09-08.
+> Última actualización: 2026-09-11.
 
 ---
 
@@ -15,21 +15,28 @@
 TAROTRIA es una plataforma SaaS de lecturas con IA (tarot y lectura de
 manos) orientada al mercado colombiano, preparada para expandirse a LATAM.
 Un usuario se registra, recibe una carta diaria gratuita, puede pedir una
-tirada de tarot de 3 cartas o subir fotos de sus palmas para un reporte
-guiado, y paga por créditos (compra única, no suscripción) cuando se le
-acaban los del bono de bienvenida. Toda interpretación la genera un modelo
-de OpenAI a partir de un prompt versionado y auditado — nunca texto
-prescrito a mano — pero con guardrails explícitos: nunca diagnostica, nunca
-garantiza el futuro, y siempre incluye un disclaimer de entretenimiento.
+tirada de tarot (3, 5 o 10 cartas) o subir fotos de sus palmas para un
+reporte guiado, y paga por créditos (compra única, no suscripción) cuando
+se le acaban los del bono de bienvenida — o ve un anuncio recompensado para
+desbloquear ciertas cosas gratis (sección 4.1). Toda interpretación la
+genera un modelo de OpenAI a partir de un prompt versionado y auditado —
+nunca texto prescrito a mano — pero con guardrails explícitos: nunca
+diagnostica, nunca garantiza el futuro, y siempre incluye un disclaimer de
+entretenimiento. La IA infiere la intención directamente de la pregunta del
+usuario, sin pedirle categorizarla primero.
 
 El posicionamiento de marca es "premium, místico, reflexivo" (ver la
-identidad visual en la sección 7): un solo tema oscuro azul-medianoche con
+identidad visual en la sección 5): un solo tema oscuro azul-medianoche con
 acentos dorados, sin selector claro/oscuro.
 
 Modelo de negocio: bono de registro de 10 créditos (alcanza para una
-lectura de tarot gratis), y dos paquetes de compra única vía Wompi —
+lectura de tarot gratis), publicidad recompensada (sección 4.1) para
+desbloquear la carta diaria más allá de los primeros 5 días, lecturas de
+tarot y ofertas flash, y dos paquetes de compra única vía Wompi —
 `ESENCIAL` (50 créditos, $19.900 COP) y `PREMIUM` (120 créditos, $39.900
-COP). Cada lectura de tarot/manos consume créditos del servicio consultado.
+COP, marcado como "recomendado" — efecto señuelo de precio). Cada lectura
+de tarot/manos consume créditos del servicio consultado (3 cartas: 10,
+5 cartas: 18, 10 cartas/Cruz Celta: 35, manos: según el plan).
 
 ## 2. Los dos repositorios
 
@@ -119,10 +126,17 @@ tarot/manos está hardcodeado en el frontend.
 - **Dinero**: `Wallet`/`WalletTransaction` (ledger auditable con
   `idempotencyKey` único), `CreditReservation` (único por `readingId` — es
   lo que garantiza a nivel de base de datos que una lectura nunca reserva
-  crédito dos veces), `CreditPackage`, `Order` (precio congelado al
+  crédito dos veces), `CreditPackage` (con `isRecommended`, efecto señuelo
+  de precio en la pantalla de compra), `Order` (precio congelado al
   crearse), `Payment` (único por `[provider, providerReference]`),
   `WebhookEvent` (único por `[provider, eventId]`, deduplicación de
   entregas).
+- **Publicidad recompensada** (ver sección 4.1): `RewardSession`
+  (`idempotencyKey` único, expira a los 10 min), `RewardTransaction`
+  (1:1 con `RewardSession` vía `rewardSessionId` único — una sesión nunca
+  puede otorgar la recompensa dos veces), `RewardProgress` (contador
+  "N de M anuncios" por `[userId, rewardType]`, se resetea al consumir el
+  desbloqueo).
 - **Compartir y crecimiento**: `ShareLink` (el propio UUID es el token
   público — no hasheado, mismo nivel de exposición que `Reading.id`, porque
   el usuario necesita poder ver su enlace de nuevo), `AnalyticsEvent`
@@ -214,7 +228,53 @@ sección 26 de ese documento):
 Al cerrar la Fase 10, `LAUNCH_CHECKLIST.md` documentó que **no quedaba
 trabajo de código pendiente** para el MVP tal como lo define el plan — los
 bloqueadores reales eran credenciales/contenido/infraestructura que solo el
-usuario podía proveer (ver sección 8).
+usuario podía proveer (ver sección 7).
+
+### 4.1. Restructuración de modelo de negocio y contextualización de IA (2026-09-11)
+
+Fuera del backlog original del plan técnico: un commit grande (`642dd60`,
+54 archivos, ~2600 líneas) que amplía el modelo de negocio y la forma en
+que la IA recibe la pregunta del usuario.
+
+- **Publicidad recompensada** (`src/rewards/`): sistema completo con
+  `RewardsService`, una interfaz `AdCallbackVerifier` agnóstica de
+  proveedor (mismo patrón que `AIProvider`/`PaymentProvider`) y un
+  `StubAdCallbackVerifier` de desarrollo. El backend es la única autoridad
+  — una recompensa solo existe si un `RewardTransaction` se creó a partir
+  de un `RewardSession` validado contra el proveedor real, nunca porque el
+  frontend diga "completed: true". Umbrales (`rewards.constants.ts`): carta
+  diaria gratis los primeros **5 días** de la cuenta, luego pide **1**
+  anuncio por día (`DailyCardService.isWithinFreeWindow` +
+  `RewardsService.tryConsumeUnlock`, atómico contra condiciones de
+  carrera); desbloquear una lectura de tarot pide **5** anuncios; ofertas
+  flash piden **2** anuncios, máximo **1 oferta/día** por usuario. Sesión
+  de recompensa expira a los 10 minutos. En el frontend,
+  `RewardedAdsProvider` (interfaz) + `StubRewardedAdsProvider` (simulador,
+  sin SDK real todavía) detrás de `useWatchRewardedAd`/`useRewardProgress`;
+  `DailyCardHero` muestra una tarjeta de "Ver anuncio para desbloquear"
+  cuando el backend responde `{ locked: true, requiredAds }`.
+- **Tarot de 5 y 10 cartas**: además de `TAROT_THREE`, ahora existen
+  `TAROT_FIVE` (Cruz de 5: situación/desafío/pasado/futuro/resultado, 18
+  créditos) y `TAROT_TEN` (Cruz Celta clásica de 10 posiciones, 35
+  créditos), cada uno con su propio prompt/schema de interpretación
+  (`tarot-five-interpretation.schema.ts`, `tarot-ten-interpretation.schema.ts`).
+- **IA más contextual**: se quitó el campo "Tema" (select) del formulario
+  de tarot — la IA infiere la intención de la consulta directamente del
+  texto de la pregunta, reduciendo fricción en vez de obligar a
+  categorizar antes de preguntar.
+- **Correos transaccionales reales**: `ResendNotificationsProvider`
+  (`src/notifications/providers/`) usando el SDK de Resend, seleccionado
+  por `NotificationsModule` solo si `RESEND_API_KEY` está definida —
+  sin ella, sigue cayendo a `ConsoleNotificationsProvider` (solo log),
+  igual que antes. Cubre los dos correos existentes: verificación de
+  cuenta y recuperación de contraseña.
+- **Cambio de contraseña** (`PATCH /auth/password`, `AuthService.changePassword`):
+  exige la contraseña actual, revoca todas las sesiones (incluida la
+  actual) tras el cambio, mismo principio de seguridad que el reset por
+  correo.
+- Otros ajustes menores: eliminación de cuenta y edición de perfil
+  ampliadas en el frontend, `useDisplayCurrency` (preferencia COP/USD solo
+  de presentación — el cobro real por Wompi siempre es en COP).
 
 ## 5. Identidad visual (resumen)
 
@@ -345,28 +405,81 @@ trabajo de la sección 4, esto no quedó registrado historia por historia en
   diseño nuevo en un enlace ya creado hay que revocarlo y volver a
   compartir.
 
+**Auditoría y reinicio completo tras la restructuración de negocio (2026-09-11)**
+
+Al reiniciar todos los servicios después del commit de la sección 4.1,
+aparecieron varios problemas reales de entorno/código que habrían
+bloqueado a cualquiera que levantara el proyecto desde cero — ninguno
+relacionado con el trabajo de rediseño visual, todos del commit de
+restructuración de negocio:
+
+- Faltaban **2 migraciones de Prisma** sin aplicar (`isRecommended` en
+  `CreditPackage`, tablas de `rewards`) → `db:migrate:deploy`.
+- El **cliente de Prisma** no se había regenerado tras el cambio de schema
+  (los tipos de `isRecommended` no existían todavía) → `db:generate`.
+- Faltaba el paquete **`resend`** instalado en `node_modules` pese a estar
+  en `package.json` → `npm install`.
+- Faltaba la variable **`REWARDS_STUB_SECRET`** en `.env` (nueva, exigida
+  por `env.validation.ts`) — sin ella la API no arrancaba.
+- **Bug real**: `ResendNotificationsProvider` reventaba la app al arrancar
+  sin `RESEND_API_KEY` — Nest instancia todos los providers de un módulo de
+  forma eager (sin importar cuál termine eligiendo la fábrica de
+  `NOTIFICATIONS_PROVIDER`), así que su constructor corría igual en
+  local/test/CI y el SDK de Resend exige un string no vacío. Corregido con
+  un placeholder que nunca se usa para enviar nada real.
+- **Bug real de lint**: un `require()` estilo CommonJS prohibido en
+  `rewards.service.spec.ts` (se corrigió a un import normal de
+  `UnauthorizedException`).
+- **Test de integración desactualizado**: `tarot-spreads.integration-spec.ts`
+  seguía esperando exactamente 1 tirada/3 posiciones (hardcodeado), sin
+  contar las 2 tiradas nuevas — se corrigió para calcular el total
+  dinámicamente a partir de `TAROT_SPREADS`.
+- **Ruido de control de versiones**: `git status` mostraba 234 archivos
+  como "modified" en `oracle-api` sin ningún cambio de contenido real
+  (confirmado con `git diff -w`: solo 13 archivos tenían diferencias
+  reales). Causa: `core.autocrlf=true` en Windows más archivos escritos
+  originalmente con LF. Se agregó `.gitattributes` (`* text=auto eol=lf`)
+  y se hizo un commit único de renormalización, dejando `git status` limpio
+  de ahí en adelante.
+
+Tras esto: **API 422/422 tests** (329 unitarios + 91 integración + 2 e2e),
+**web 75/75 tests**, typecheck/lint/build limpios en ambos repos, los tres
+servicios (API, worker, web) saludables.
+
 ## 7. Estado actual y bloqueadores reales pendientes
 
-No queda trabajo de código pendiente para el alcance del MVP. Lo que sigue
-abierto depende de decisiones o recursos externos:
+No queda trabajo de código pendiente para lo que ya está construido (MVP
+original + restructuración de negocio de la sección 4.1). Lo que sigue
+abierto depende de decisiones, credenciales o recursos externos:
 
-1. **Webhook de Wompi en producción**: en local se resolvió con
+1. **Proveedor real de publicidad recompensada**: hoy `RewardsService` solo
+   tiene registrado el proveedor `stub` (`StubAdCallbackVerifier` en el
+   backend, `StubRewardedAdsProvider` en el frontend) — simula ver un
+   anuncio sin depender de ninguna cuenta real. Falta contratar un
+   proveedor (ej. ayeT-Studios) e implementar un nuevo
+   `AdCallbackVerifier`/`RewardedAdsProvider` real; la arquitectura ya está
+   lista para enchufarlo sin tocar el resto del sistema.
+2. **`RESEND_API_KEY` real**: el proveedor de correo está integrado y
+   probado (`ResendNotificationsProvider`), pero sin una key real de
+   Resend los correos de verificación/recuperación siguen solo en el log
+   de consola.
+3. **Webhook de Wompi en producción**: en local se resolvió con
    confirmación activa al volver del checkout (sección 6), pero la entrega
    pasiva del webhook de Wompi hacia la API real todavía no se ha
    confirmado funcionando — en producción (con una URL pública estable, no
    un túnel efímero) debería funcionar sin el workaround, pero no se ha
    verificado con infraestructura real desplegada.
-2. **Sentry**: SDK integrado en ambos repos pero inactivo — falta un
+4. **Sentry**: SDK integrado en ambos repos pero inactivo — falta un
    `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN` real y configurar reglas de alerta
    desde el dashboard de Sentry.
-3. **Revisión legal**: los textos de `/legal/terminos` y
+5. **Revisión legal**: los textos de `/legal/terminos` y
    `/legal/privacidad` son un borrador razonable en español, marcado
    explícitamente como pendiente de revisión por un abogado.
-4. **Staging/producción real**: todo lo verificado en esta sesión corrió
+6. **Staging/producción real**: todo lo verificado en esta sesión corrió
    contra Docker local (Postgres/Redis/MinIO) — sigue pendiente desplegar
    un entorno real (el propio plan lo señala como el único ítem de la
    Fase 0 sin marcar).
-5. **Logo definitivo**: el isotipo actual es un boceto propio funcional en
+7. **Logo definitivo**: el isotipo actual es un boceto propio funcional en
    SVG, no el logo oficial que un diseñador debería producir antes de
    cualquier registro de marca (aclaración explícita ya hecha en su
    momento).
@@ -397,5 +510,13 @@ completo):
   para poder probar el checkout de Wompi (sección 6) — funciona
   exactamente igual que `localhost` para todo lo demás.
 - El worker **nunca** debe correr en el mismo proceso que la API.
+- `REWARDS_STUB_SECRET` es obligatoria (cualquier string aleatorio sirve en
+  local) — sin ella la API no pasa la validación de config al arrancar.
+  `RESEND_API_KEY`/`EMAIL_FROM` son opcionales (sin ellas, los correos solo
+  quedan en el log).
+- Tras cambiar `prisma/schema.prisma` o hacer `git pull`/checkout de un
+  commit con migraciones nuevas, correr `npm run db:generate` **antes** de
+  `npm run db:migrate:dev`/`deploy` — si no, el cliente de Prisma queda con
+  tipos desactualizados y el build/typecheck falla.
 - `npm run test:e2e` (Playwright) y `npm run test:load` requieren la app
   completa corriendo contra Postgres/Redis reales.

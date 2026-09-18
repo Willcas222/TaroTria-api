@@ -71,7 +71,7 @@ Ver [`.env.example`](./.env.example) para la lista completa. La configuración s
 
 Tres niveles, alineados con la sección 20 del plan técnico:
 
-- **Unitarias** (`npm test`): no requieren infraestructura externa.
+- ** nitarias** (`npm test`): no requieren infraestructura externa.
 - **E2E** (`npm run test:e2e`): levantan la aplicación completa vía Nest Testing; requieren PostgreSQL y Redis corriendo (`npm run docker:up`).
 - **Integración** (`npm run test:integration`): corren contra una base de datos y un logical DB de Redis aislados, aplicando migraciones automáticamente antes de ejecutar.
 
