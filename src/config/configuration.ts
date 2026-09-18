@@ -17,5 +17,11 @@ export default registerAs('app', () => ({
   url: process.env.APP_URL,
   apiUrl: process.env.API_URL,
   apiPrefix: 'api/v1',
+  // Solo hace falta cuando la API y el frontend viven en subdominios
+  // distintos del mismo dominio (ej. api.tarotria.com y tarotria.com) --
+  // sin esto, una cookie puesta por la API nunca la ve el frontend, porque
+  // por defecto una cookie solo es visible para el host exacto que la puso.
+  // En local (mismo host lvh.me para ambos) se deja sin definir.
+  cookieDomain: process.env.COOKIE_DOMAIN,
   version: readPackageVersion(),
 }));

@@ -40,6 +40,13 @@ export class RewardsController {
     return { progress };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('flash-offer')
+  async getActiveFlashOffer(@CurrentUser() user: AuthenticatedUser) {
+    const offer = await this.rewardsService.getActiveFlashOffer(user.id);
+    return { offer };
+  }
+
   // Solo dev/pruebas: dispara la finalización simulada de un anuncio sin
   // depender de un proveedor externo real (RewardsService.simulateStubCompletion
   // devuelve 404 fuera de NODE_ENV=production... es decir, se auto-desactiva en
