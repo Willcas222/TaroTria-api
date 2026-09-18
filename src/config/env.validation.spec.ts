@@ -183,6 +183,17 @@ describe('validateEnv', () => {
     ).toThrow(/Invalid environment configuration/);
   });
 
+  it('accepts REDIS_URL with the TLS "rediss://" scheme used by managed Redis providers', () => {
+    const result = validateEnv({
+      ...REQUIRED,
+      REDIS_URL: 'rediss://user:pass@managed-redis-host:25061',
+    });
+
+    expect(result.REDIS_URL).toBe(
+      'rediss://user:pass@managed-redis-host:25061',
+    );
+  });
+
   it('fails fast when APP_URL is missing', () => {
     expect(() => validateEnv({ ...REQUIRED, APP_URL: undefined })).toThrow(
       /Invalid environment configuration/,

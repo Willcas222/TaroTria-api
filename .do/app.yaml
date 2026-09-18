@@ -1,0 +1,218 @@
+##############################################################################
+# Spec de Digital Ocean App Platform para TAROTRIA.
+#
+# Usa los Dockerfile de producción que ya existen en cada repo (api y web),
+# en vez de que App Platform intente adivinar cómo compilar el proyecto.
+#
+# Cómo usarlo:
+#   1. En la consola de DO: Apps -> Create App -> "Import from App Spec" ->
+#      sube este archivo (o pégalo).
+#   2. DO te va a pedir el valor de cada variable marcada como SECRET antes
+#      de crear la app -- por eso no tienen valor aquí, nunca deben quedar
+#      commiteadas en el repo.
+#   3. Después de crear la app, ve a Settings -> Domains y agrega tu dominio
+#      (ver guía DEPLOY_DIGITALOCEAN.md para los registros DNS exactos).
+##############################################################################
+name: tarotria
+region: nyc
+
+services:
+  # API (NestJS). Sirve todo bajo el prefijo /api/v1 -- ver src/main.ts.
+  # Usa Dockerfile (imagen de producción ya en el repo) -- su CMD por
+  # defecto ("node dist/main") es justo lo que necesita este componente.
+  - name: api
+    github:
+      repo: Willcas222/TaroTria-api
+      branch: dev
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: Dockerfile
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    http_port: 8080
+    health_check:
+      http_path: /api/v1
+    routes:
+      - path: /
+    domains:
+      - domain: api.tarotria.com
+        type: PRIMARY
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: APP_URL
+        value: https://tarotria.com
+      - key: API_URL
+        value: https://api.tarotria.com/api/v1
+      - key: COOKIE_DOMAIN
+        value: tarotria.com
+      - key: DATABASE_URL
+        value: ${tarotria-db.DATABASE_URL}
+      - key: REDIS_URL
+        value: ${tarotria-redis.DATABASE_URL}
+      - key: JWT_ACCESS_SECRET
+        type: SECRET
+      - key: JWT_REFRESH_SECRET
+        type: SECRET
+      - key: DAILY_CARD_SECRET
+        type: SECRET
+      - key: REWARDS_STUB_SECRET
+        type: SECRET
+      - key: OPENAI_API_KEY
+        type: SECRET
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: SPACES_ENDPOINT
+        value: https://nyc3.digitaloceanspaces.com
+      - key: SPACES_REGION
+        value: nyc3
+      - key: SPACES_BUCKET
+        value: tarotria-prod
+      - key: SPACES_ACCESS_KEY
+        type: SECRET
+      - key: SPACES_SECRET_KEY
+        type: SECRET
+      - key: WALLET_INITIAL_BONUS_CREDITS
+        value: '10'
+      - key: WOMPI_PUBLIC_KEY
+        type: SECRET
+      - key: WOMPI_PRIVATE_KEY
+        type: SECRET
+      - key: WOMPI_EVENTS_SECRET
+        type: SECRET
+      - key: WOMPI_INTEGRITY_SECRET
+        type: SECRET
+      - key: WOMPI_API_URL
+        value: https://production.wompi.co/v1
+      - key: AI_COST_USD_TO_COP_RATE
+        value: '4000'
+      - key: SENTRY_DSN
+        type: SECRET
+      - key: RESEND_API_KEY
+        type: SECRET
+      - key: EMAIL_FROM
+        value: 'TAROTRIA <no-reply@tarotria.com>'
+
+  # Frontend (Next.js). Usa el Dockerfile "standalone" ya en el repo -- su
+  # CMD por defecto ("node server.js") ya escucha en $PORT.
+  - name: web
+    github:
+      repo: Willcas222/TaroTria-web
+      branch: dev
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: Dockerfile
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    http_port: 8080
+    domains:
+      - domain: tarotria.com
+        type: PRIMARY
+      - domain: www.tarotria.com
+        type: ALIAS
+    envs:
+      # BUILD_TIME: el Dockerfile las recibe como --build-arg (ver ARG en
+      # el Dockerfile) y quedan horneadas en el bundle del navegador.
+      - key: NEXT_PUBLIC_API_URL
+        value: https://api.tarotria.com/api/v1
+        scope: BUILD_TIME
+      - key: NEXT_PUBLIC_SENTRY_DSN
+        type: SECRET
+        scope: BUILD_TIME
+      - key: SENTRY_DSN
+        type: SECRET
+
+jobs:
+  # Corre "prisma migrate deploy" antes de cada despliegue de la API, para
+  # que la base de datos quede al día con el código nuevo automáticamente.
+  # Reutiliza la misma imagen de la API -- ya trae el cliente de Prisma
+  # generado y el CLI (prisma) en node_modules.
+  - name: migrate
+    kind: PRE_DEPLOY
+    github:
+      repo: Willcas222/TaroTria-api
+      branch: dev
+    source_dir: /
+    dockerfile_path: Dockerfile
+    run_command: npm run db:migrate:deploy
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    envs:
+      - key: DATABASE_URL
+        value: ${tarotria-db.DATABASE_URL}
+
+workers:
+  # Procesa los jobs de BullMQ (lecturas de tarot/palma con IA). Debe correr
+  # como proceso separado de la API -- ver worker.module.ts. Misma imagen
+  # que "api", solo cambia el comando de arranque.
+  - name: worker
+    github:
+      repo: Willcas222/TaroTria-api
+      branch: dev
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: Dockerfile
+    run_command: node dist/worker
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: APP_URL
+        value: https://tarotria.com
+      - key: API_URL
+        value: https://api.tarotria.com/api/v1
+      - key: DATABASE_URL
+        value: ${tarotria-db.DATABASE_URL}
+      - key: REDIS_URL
+        value: ${tarotria-redis.DATABASE_URL}
+      - key: JWT_ACCESS_SECRET
+        type: SECRET
+      - key: JWT_REFRESH_SECRET
+        type: SECRET
+      - key: DAILY_CARD_SECRET
+        type: SECRET
+      - key: REWARDS_STUB_SECRET
+        type: SECRET
+      - key: OPENAI_API_KEY
+        type: SECRET
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: SPACES_ENDPOINT
+        value: https://nyc3.digitaloceanspaces.com
+      - key: SPACES_REGION
+        value: nyc3
+      - key: SPACES_BUCKET
+        value: tarotria-prod
+      - key: SPACES_ACCESS_KEY
+        type: SECRET
+      - key: SPACES_SECRET_KEY
+        type: SECRET
+      - key: WOMPI_PUBLIC_KEY
+        type: SECRET
+      - key: WOMPI_PRIVATE_KEY
+        type: SECRET
+      - key: WOMPI_EVENTS_SECRET
+        type: SECRET
+      - key: WOMPI_INTEGRITY_SECRET
+        type: SECRET
+      - key: WOMPI_API_URL
+        value: https://production.wompi.co/v1
+      - key: AI_COST_USD_TO_COP_RATE
+        value: '4000'
+      - key: SENTRY_DSN
+        type: SECRET
+      - key: RESEND_API_KEY
+        type: SECRET
+      - key: EMAIL_FROM
+        value: 'TAROTRIA <no-reply@tarotria.com>'
+
+databases:
+  - name: tarotria-db
+    engine: PG
+    version: '16'
+    production: true
+  - name: tarotria-redis
+    engine: REDIS
+    version: '7'
+    production: true

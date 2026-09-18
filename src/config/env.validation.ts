@@ -46,15 +46,21 @@ export const envSchema = z
         'DATABASE_URL_TEST must be a postgresql:// connection string',
       )
       .optional(),
+    // "rediss://" (TLS) también es válido -- los Redis administrados de
+    // Digital Ocean exigen TLS y entregan la connection string con ese
+    // esquema; ioredis y BullMQ lo detectan automáticamente sin config extra.
     REDIS_URL: z
       .string()
       .min(1, 'REDIS_URL is required')
-      .regex(/^redis:\/\//, 'REDIS_URL must be a redis:// connection string'),
+      .regex(
+        /^rediss?:\/\//,
+        'REDIS_URL must be a redis:// or rediss:// connection string',
+      ),
     REDIS_URL_TEST: z
       .string()
       .regex(
-        /^redis:\/\//,
-        'REDIS_URL_TEST must be a redis:// connection string',
+        /^rediss?:\/\//,
+        'REDIS_URL_TEST must be a redis:// or rediss:// connection string',
       )
       .optional(),
     SPACES_ENDPOINT: z
